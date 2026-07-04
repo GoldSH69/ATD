@@ -1,0 +1,28 @@
+{
+  "name": "autothreads-locallm",
+  "productName": "AutoThreads",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Threads post automation studio — news-driven draft generation via Claude / OpenAI / local LLM (Electron + React + TypeScript)",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "build": "node scripts/build.js",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.app.json --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.electron.json --noEmit",
+    "start": "node scripts/start.js"
+  },
+  "dependencies": {
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "electron": "^43.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.3"
+  }
+}
