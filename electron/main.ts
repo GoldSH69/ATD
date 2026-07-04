@@ -4,7 +4,9 @@ import { getSettings, setSettings } from './settings'
 import { testLlm } from './llm'
 import { generatePostDraft, generateReplyDraft } from './pipeline'
 import { testThreads, scrapeRecentTexts, fetchUnansweredReplies } from './threadsApi'
+import { startThreadsOAuth } from './threadsOAuth'
 import { fetchTopicNews } from './news'
+import { generateImageKeywords, searchImages } from './images'
 import { allDrafts, upsertDraft, deleteDraft, setDraftsChangedListener } from './drafts'
 import { startScheduler, postDraftNow } from './scheduler'
 import type { AppSettings, Draft, LlmSettings } from './types'
@@ -34,6 +36,7 @@ function createWindow(): BrowserWindow {
     backgroundColor: theme === 'dark' ? '#0e0e0e' : '#ffffff',
     autoHideMenuBar: true,
     title: 'AutoThreads',
+    icon: path.join(__dirname, '../build/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -81,6 +84,9 @@ app.whenReady().then(() => {
   ipcMain.handle('threads:test', (_e, cfg: { accessToken: string; userId: string }) =>
     testThreads(cfg)
   )
+  ipcMain.handle('threads:oauth-start', (_e, cfg: Parameters<typeof startThreadsOAuth>[0]) =>
+    startThreadsOAuth(cfg)
+  )
   ipcMain.handle('threads:scrape-style', async (_e, count: number) => {
     const threads = getSettings().threads
     if (!threads.accessToken) {
@@ -111,6 +117,10 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('news:fetch', (_e, topic: string) => fetchTopicNews(String(topic ?? '').trim()))
+  ipcMain.handle('images:keywords', (_e, input: Parameters<typeof generateImageKeywords>[0]) =>
+    generateImageKeywords(input)
+  )
+  ipcMain.handle('images:search', (_e, query: string) => searchImages(String(query ?? '').trim()))
 
   ipcMain.handle('drafts:all', () => allDrafts())
   ipcMain.handle('drafts:upsert', (_e, draft: Draft) => upsertDraft(draft))

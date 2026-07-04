@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useApp } from '../store/appStore'
+import { shellText } from '../i18n'
 import type { Draft, UnansweredReply } from '../types'
 import { snippet, timeAgo } from '../util/format'
 
 export default function RepliesView() {
   const drafts = useApp((s) => s.drafts)
+  const settings = useApp((s) => s.settings)
   const setView = useApp((s) => s.setView)
   const selectDraft = useApp((s) => s.selectDraft)
   const upsertDraft = useApp((s) => s.upsertDraft)
   const toast = useApp((s) => s.toast)
+  const text = shellText(settings?.language)
 
   const [replies, setReplies] = useState<UnansweredReply[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -67,7 +70,7 @@ export default function RepliesView() {
       }
       await upsertDraft(draft)
       selectDraft(draft.id)
-      toast('ok', 'Reply draft created — review it in Drafts')
+      toast('ok', text.draftReply)
     } catch (err) {
       toast('err', err instanceof Error ? err.message : String(err))
     } finally {
@@ -82,35 +85,35 @@ export default function RepliesView() {
     setView(inDrafts(existing) ? 'drafts' : 'queue')
   }
   const existingLabel = (d: Draft): string =>
-    d.status === 'posted' ? 'replied' : inDrafts(d) ? 'drafted' : 'queued'
+    d.status === 'posted' ? text.posted : inDrafts(d) ? text.drafts : text.queue
 
   return (
     <div className="view">
       <div className="view-header">
-        <span className="view-title">Replies</span>
-        <span className="view-sub">Replies to your posts you haven't answered</span>
+        <span className="view-title">{text.replies}</span>
+        <span className="view-sub">{text.repliesSubtitle}</span>
         <div className="view-actions">
           <button className="btn" disabled={loading} onClick={() => void load()}>
-            {loading ? 'Refreshing…' : 'Refresh'}
+            {loading ? text.refreshing : text.refresh}
           </button>
         </div>
       </div>
       <div className="view-body no-pad">
         {loading ? (
-          <div className="empty">Checking your threads…</div>
+          <div className="empty">{text.checkingThreads}</div>
         ) : error ? (
           <div className="empty">
             {error}
             {/configur/i.test(error) && (
               <div>
                 <button className="btn" onClick={() => setView('settings')}>
-                  Open settings
+                  {text.openSettings}
                 </button>
               </div>
             )}
           </div>
         ) : !replies || replies.length === 0 ? (
-          <div className="empty">All caught up — no unanswered replies.</div>
+          <div className="empty">{text.allCaughtUp}</div>
         ) : (
           replies.map((r) => {
             const existing = draftFor(r)
@@ -127,7 +130,7 @@ export default function RepliesView() {
                     <>
                       <span className="badge">{existingLabel(existing)}</span>
                       <button className="link" onClick={() => goToDraft(existing)}>
-                        {inDrafts(existing) ? 'View draft' : 'View in queue'}
+                        {inDrafts(existing) ? text.viewDraft : text.viewQueue}
                       </button>
                     </>
                   ) : (
@@ -136,7 +139,7 @@ export default function RepliesView() {
                       disabled={busyId === r.id}
                       onClick={() => void generate(r)}
                     >
-                      {busyId === r.id ? 'Generating…' : 'Draft reply'}
+                      {busyId === r.id ? text.generating : text.draftReply}
                     </button>
                   )}
                 </div>

@@ -14,8 +14,12 @@ function unconfiguredMessage(llm: AppSettings['llm']): string | null {
     return 'Claude API key is missing — configure in Settings.'
   if (llm.provider === 'openai' && !llm.openai.apiKey.trim())
     return 'OpenAI API key is missing — configure in Settings.'
+  if (llm.provider === 'gemini' && !llm.gemini.apiKey.trim())
+    return 'Gemini API key is missing — configure in Settings.'
   if (llm.provider === 'local' && !llm.local.baseUrl.trim())
     return 'Local LLM base URL is missing — configure in Settings.'
+  if (llm.provider === 'other' && !llm.other.baseUrl.trim())
+    return 'Other provider base URL is missing — configure in Settings.'
   return null
 }
 

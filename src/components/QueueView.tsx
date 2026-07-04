@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../store/appStore'
+import { shellText } from '../i18n'
 import type { Draft } from '../types'
 import { fmtDateTime, snippet, timeAgo } from '../util/format'
 
@@ -7,11 +8,13 @@ const rank = (s: Draft['status']) => (s === 'scheduled' ? 0 : s === 'posting' ? 
 
 export default function QueueView() {
   const drafts = useApp((s) => s.drafts)
+  const settings = useApp((s) => s.settings)
   const upsertDraft = useApp((s) => s.upsertDraft)
   const deleteDraft = useApp((s) => s.deleteDraft)
   const toast = useApp((s) => s.toast)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const text = shellText(settings?.language)
 
   const items = drafts
     .filter((d) => d.status === 'scheduled' || d.status === 'posting' || d.status === 'posted')
@@ -39,7 +42,7 @@ export default function QueueView() {
 
   const unschedule = async (d: Draft) => {
     await upsertDraft({ ...d, status: 'draft', scheduledAt: undefined })
-    toast('ok', 'Moved back to drafts')
+    toast('ok', text.drafts)
   }
 
   const removePosted = async (id: string) => {
@@ -54,12 +57,12 @@ export default function QueueView() {
   return (
     <div className="view">
       <div className="view-header">
-        <span className="view-title">Queue</span>
-        <span className="view-sub">Scheduled and published posts</span>
+        <span className="view-title">{text.queue}</span>
+        <span className="view-sub">{text.scheduledPublished}</span>
       </div>
       <div className="view-body no-pad">
         {items.length === 0 ? (
-          <div className="empty">Nothing queued. Schedule a draft from the Drafts view.</div>
+          <div className="empty">{text.nothingQueued}</div>
         ) : (
           items.map((d) => {
             const permalink = d.permalink
@@ -71,8 +74,8 @@ export default function QueueView() {
                 </div>
                 <div className="item-meta">
                   {d.kind === 'reply' && d.replyToUsername && <span>reply to @{d.replyToUsername}</span>}
-                  {d.status === 'scheduled' && <span>posts {fmtDateTime(d.scheduledAt)}</span>}
-                  {d.status === 'posted' && <span>posted {timeAgo(d.postedAt)}</span>}
+                  {d.status === 'scheduled' && <span>{text.posts} {fmtDateTime(d.scheduledAt)}</span>}
+                  {d.status === 'posted' && <span>{text.posted} {timeAgo(d.postedAt)}</span>}
                   {d.topic && <span>{d.topic}</span>}
                 </div>
                 <div className="row" style={{ marginTop: 6 }}>
@@ -83,30 +86,30 @@ export default function QueueView() {
                         disabled={busyId === d.id}
                         onClick={() => void postNow(d.id)}
                       >
-                        {busyId === d.id ? 'Posting…' : 'Post now'}
+                        {busyId === d.id ? text.posting : text.postNow}
                       </button>
                       <button
                         className="btn ghost small"
                         disabled={busyId === d.id}
                         onClick={() => void unschedule(d)}
                       >
-                        Unschedule
+                        {text.unschedule}
                       </button>
                     </>
                   )}
-                  {d.status === 'posting' && <span className="muted">publishing…</span>}
+                  {d.status === 'posting' && <span className="muted">{text.publishing}</span>}
                   {d.status === 'posted' && (
                     <>
                       {permalink && (
                         <button className="link" onClick={() => void window.api.openExternal(permalink)}>
-                          open ↗
+                          {text.open}
                         </button>
                       )}
                       <button
                         className={confirmId === d.id ? 'btn danger small' : 'btn ghost small'}
                         onClick={() => void removePosted(d.id)}
                       >
-                        {confirmId === d.id ? 'Confirm remove' : 'Remove'}
+                        {confirmId === d.id ? text.confirmRemove : text.remove}
                       </button>
                     </>
                   )}

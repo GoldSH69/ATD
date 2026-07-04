@@ -118,7 +118,9 @@ export async function postDraftNow(id: string): Promise<{ ok: boolean; message: 
     await updateDraft(id, { status: 'posting', error: undefined })
     const cfg = { accessToken, userId }
     const res =
-      draft.kind === 'reply' ? await publishReply(cfg, text, draft.replyToId!) : await publishPost(cfg, text)
+      draft.kind === 'reply'
+        ? await publishReply(cfg, text, draft.replyToId!)
+        : await publishPost(cfg, text, draft.imageUrl)
     try {
       await updateDraft(id, {
         status: 'posted',

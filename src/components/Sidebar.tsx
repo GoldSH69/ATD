@@ -1,4 +1,6 @@
 import { useApp } from '../store/appStore'
+import { shellText } from '../i18n'
+import logo from '../assets/autothreads-logo.png'
 import type { ViewId } from '../types'
 
 const NAV: { id: ViewId; label: string }[] = [
@@ -14,6 +16,7 @@ export default function Sidebar() {
   const drafts = useApp((s) => s.drafts)
   const settings = useApp((s) => s.settings)
   const saveSettings = useApp((s) => s.saveSettings)
+  const text = shellText(settings?.language)
 
   const draftCount = drafts.filter((d) => d.status === 'draft').length
   const queueCount = drafts.filter((d) => d.status === 'scheduled' || d.status === 'posting').length
@@ -28,15 +31,19 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="side-brand">AutoThreads</div>
+      <div className="side-brand">
+        <img className="side-logo" src={logo} alt="" />
+        <span>AutoThreads</span>
+      </div>
       <nav className="side-nav">
         {NAV.map((item) => (
           <button
             key={item.id}
             className={`side-item${view === item.id ? ' active' : ''}`}
+            data-view={item.id}
             onClick={() => setView(item.id)}
           >
-            <span>{item.label}</span>
+            <span>{item.id === 'drafts' ? text.drafts : item.id === 'news' ? text.news : item.id === 'replies' ? text.replies : text.queue}</span>
             {countFor(item.id) > 0 && <span className="side-count">{countFor(item.id)}</span>}
           </button>
         ))}
@@ -44,12 +51,13 @@ export default function Sidebar() {
       <div className="side-footer">
         <button
           className={`side-item${view === 'settings' ? ' active' : ''}`}
+          data-view="settings"
           onClick={() => setView('settings')}
         >
-          <span>Settings</span>
+          <span>{text.settings}</span>
         </button>
         <button className="side-item" onClick={toggleTheme}>
-          <span>{settings?.theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+          <span>{settings?.theme === 'dark' ? text.light : text.dark}</span>
         </button>
       </div>
     </aside>

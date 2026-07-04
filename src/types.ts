@@ -2,7 +2,8 @@
  *  tsconfig only includes electron/, so the DTO shapes are duplicated there). */
 
 export type ThemeMode = 'light' | 'dark'
-export type LlmProviderKind = 'claude' | 'openai' | 'local'
+export type LanguageCode = 'en' | 'es' | 'ko' | 'zh' | 'ja' | 'fr' | 'de' | 'pt'
+export type LlmProviderKind = 'claude' | 'openai' | 'gemini' | 'local' | 'other'
 export type DraftKind = 'post' | 'reply'
 export type DraftStatus = 'draft' | 'scheduled' | 'posting' | 'posted' | 'failed'
 export type ViewId = 'drafts' | 'news' | 'replies' | 'queue' | 'settings'
@@ -11,13 +12,20 @@ export interface LlmSettings {
   provider: LlmProviderKind
   claude: { apiKey: string; model: string }
   openai: { apiKey: string; model: string }
+  gemini: { apiKey: string; model: string }
   local: { baseUrl: string; model: string; apiKey: string }
+  other: { baseUrl: string; model: string; apiKey: string; headersJson: string; bodyJson: string }
 }
 
 export interface ThreadsSettings {
   accessToken: string
   userId: string
   username: string
+  appId: string
+  appSecret: string
+  redirectUri: string
+  scopes: string
+  tokenExpiresAt: number | null
 }
 
 export interface StyleSettings {
@@ -33,6 +41,7 @@ export interface AutoDraftSettings {
 
 export interface AppSettings {
   theme: ThemeMode
+  language: LanguageCode
   onboarded: boolean
   topics: string[]
   llm: LlmSettings
@@ -48,6 +57,10 @@ export interface Draft {
   topic?: string
   sourceTitle?: string
   sourceUrl?: string
+  imageUrl?: string
+  imageThumbUrl?: string
+  imageTitle?: string
+  imagePageUrl?: string
   replyToId?: string
   replyToText?: string
   replyToUsername?: string
@@ -69,6 +82,14 @@ export interface NewsItem {
   topic: string
 }
 
+export interface ImageCandidate {
+  url: string
+  thumbUrl: string
+  title: string
+  source: string
+  pageUrl: string
+}
+
 export interface UnansweredReply {
   id: string
   text: string
@@ -81,6 +102,13 @@ export interface UnansweredReply {
 export interface TestResult {
   ok: boolean
   message: string
+}
+
+export interface ThreadsOAuthResult extends TestResult {
+  accessToken?: string
+  userId?: string
+  username?: string
+  tokenExpiresAt?: number | null
 }
 
 export interface GenerateResult {
@@ -100,6 +128,7 @@ export interface BridgeApi {
   settingsGet(): Promise<AppSettings>
   settingsSet(settings: AppSettings): Promise<void>
   llmTest(llm: LlmSettings): Promise<TestResult>
+  threadsOAuthStart(cfg: Pick<ThreadsSettings, 'appId' | 'appSecret' | 'redirectUri' | 'scopes'>): Promise<ThreadsOAuthResult>
   threadsTest(cfg: { accessToken: string; userId: string }): Promise<TestResult & { username?: string; userId?: string }>
   threadsScrapeStyle(count: number): Promise<{ ok: boolean; samples: string[]; message: string }>
   newsFetch(topic: string): Promise<NewsItem[]>
@@ -114,6 +143,8 @@ export interface BridgeApi {
     replyUsername: string
     rootPostText: string
   }): Promise<GenerateResult>
+  imageKeywords(input: { topic?: string; title?: string; text: string }): Promise<GenerateResult>
+  imageSearch(query: string): Promise<{ ok: boolean; images: ImageCandidate[]; message: string }>
   unansweredReplies(): Promise<{ ok: boolean; replies: UnansweredReply[]; message: string }>
   draftsAll(): Promise<Draft[]>
   draftUpsert(draft: Draft): Promise<Draft[]>
@@ -128,6 +159,9 @@ export const DEFAULT_TOPICS = ['artificial intelligence', 'technology', 'startup
 export const LLM_DEFAULTS = {
   claudeModel: 'claude-sonnet-5',
   openaiModel: 'gpt-4o-mini',
-  localBaseUrl: 'http://localhost:11434/v1',
-  localModel: 'llama3.1',
+  geminiModel: 'gemini-3.5-flash',
+  localBaseUrl: 'http://127.0.0.1:8080/v1/chat/completions',
+  localModel: 'gemma4-v2',
+  otherBaseUrl: 'https://openrouter.ai/api/v1',
+  otherModel: '',
 } as const

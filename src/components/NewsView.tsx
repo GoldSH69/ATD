@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../store/appStore'
+import { shellText } from '../i18n'
 import { timeAgo } from '../util/format'
 import type { Draft, NewsItem } from '../types'
 
@@ -9,6 +10,7 @@ export default function NewsView() {
   const upsertDraft = useApp((s) => s.upsertDraft)
   const selectDraft = useApp((s) => s.selectDraft)
   const toast = useApp((s) => s.toast)
+  const text = shellText(settings?.language)
 
   const topics = settings?.topics ?? []
   const [picked, setPicked] = useState<string | null>(null)
@@ -70,7 +72,7 @@ export default function NewsView() {
       }
       await upsertDraft(draft)
       selectDraft(draft.id)
-      toast('ok', 'Draft created — review it in Drafts')
+      toast('ok', `${text.drafts}: ${text.generateDraft}`)
     } catch (err) {
       toast('err', `Failed to generate draft: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -82,13 +84,13 @@ export default function NewsView() {
     return (
       <div className="view">
         <div className="view-header">
-          <div className="view-title">News</div>
+          <div className="view-title">{text.news}</div>
         </div>
         <div className="view-body no-pad">
           <div className="empty">
-            <div>No topics configured</div>
+            <div>{text.noTopics}</div>
             <button className="btn" onClick={() => setView('settings')}>
-              Open Settings
+              {text.openSettings}
             </button>
           </div>
         </div>
@@ -99,8 +101,8 @@ export default function NewsView() {
   return (
     <div className="view">
       <div className="view-header">
-        <div className="view-title">News</div>
-        <div className="view-sub">Google News · {topic}</div>
+        <div className="view-title">{text.news}</div>
+        <div className="view-sub">Google News + Hacker News · {topic}</div>
         <div className="row">
           {topics.map((t) => (
             <button
@@ -114,37 +116,49 @@ export default function NewsView() {
         </div>
         <div className="view-actions">
           <button className="btn" onClick={() => setRefreshKey((k) => k + 1)} disabled={loading}>
-            {loading ? 'Loading…' : 'Refresh'}
+            {loading ? text.loading : text.refresh}
           </button>
         </div>
       </div>
       <div className="view-body no-pad">
         {loading ? (
-          <div className="empty">Loading news…</div>
+          <div className="empty">{text.loadingNews}</div>
         ) : items.length === 0 ? (
-          <div className="empty">No news found for this topic.</div>
+          <div className="empty">{text.noNews}</div>
         ) : (
-          items.map((item, i) => (
-            <div key={`${i}-${item.link}`} className="list-item" style={{ cursor: 'default' }}>
-              <div className="item-title">
-                <span>{item.title}</span>
-              </div>
-              <div className="item-meta">
-                <span>{item.source}</span>
-                {item.publishedAt != null && <span>{timeAgo(item.publishedAt)}</span>}
-                <button className="link" onClick={() => void window.api.openExternal(item.link)}>
-                  open ↗
-                </button>
-                <button
-                  className="btn small"
-                  disabled={generatingLink !== null}
-                  onClick={() => void generateDraft(item)}
-                >
-                  {generatingLink === item.link ? 'Generating…' : 'Generate draft'}
-                </button>
-              </div>
+          <div className="news-table" role="table" aria-label="News">
+            <div className="news-table-head" role="row">
+              <span role="columnheader">Headline</span>
+              <span role="columnheader">Source</span>
+              <span role="columnheader">Age</span>
+              <span role="columnheader">Actions</span>
             </div>
-          ))
+            {items.map((item, i) => (
+              <div key={`${i}-${item.link}`} className="news-row" role="row">
+                <div className="news-title" role="cell" title={item.title}>
+                  {item.title}
+                </div>
+                <div className="news-source" role="cell" title={item.source}>
+                  {item.source}
+                </div>
+                <div className="news-age" role="cell">
+                  {item.publishedAt != null ? timeAgo(item.publishedAt) : ''}
+                </div>
+                <div className="news-actions" role="cell">
+                  <button className="link" onClick={() => void window.api.openExternal(item.link)}>
+                    {text.open}
+                  </button>
+                  <button
+                    className="btn small"
+                    disabled={generatingLink !== null}
+                    onClick={() => void generateDraft(item)}
+                  >
+                    {generatingLink === item.link ? text.generating : text.generateDraft}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

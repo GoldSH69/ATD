@@ -1,14 +1,15 @@
 import type { NewsItem } from './types'
 
 /**
- * Topic news over Google News RSS, regex-parsed (no XML dependency).
- * Never throws — any network/parse failure degrades to [].
+ * Topic news over multiple lightweight public sources. Each source degrades to
+ * [] on failure so one flaky feed cannot break the whole News view.
  */
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
 
 const MAX_ITEMS = 30
+const SOURCE_LIMIT = 15
 
 function decodeEntities(s: string): string {
   // &amp; is decoded LAST so nested entities (e.g. "&amp;lt;") resolve correctly.
@@ -27,7 +28,7 @@ function tagText(block: string, tag: string): string {
   return m ? decodeEntities(m[1].trim()) : ''
 }
 
-export async function fetchTopicNews(topic: string): Promise<NewsItem[]> {
+async function fetchGoogleNews(topic: string): Promise<NewsItem[]> {
   const q = topic.trim()
   if (!q) return []
   const ctrl = new AbortController()
@@ -71,4 +72,92 @@ export async function fetchTopicNews(topic: string): Promise<NewsItem[]> {
   } finally {
     clearTimeout(timer)
   }
+}
+
+function normalizeStoryUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    u.hash = ''
+    if (u.hostname.startsWith('www.')) u.hostname = u.hostname.slice(4)
+    return u.toString().replace(/\/$/, '')
+  } catch {
+    return url.trim()
+  }
+}
+
+function titleKey(title: string): string {
+  return title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim()
+}
+
+interface HackerNewsHit {
+  title?: string
+  story_title?: string
+  url?: string
+  story_url?: string
+  objectID?: string
+  created_at?: string
+}
+
+async function fetchHackerNews(topic: string): Promise<NewsItem[]> {
+  const q = topic.trim()
+  if (!q) return []
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const url =
+      `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(q)}` +
+      `&tags=story&hitsPerPage=${SOURCE_LIMIT}`
+    const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: ctrl.signal })
+    if (!res.ok) return []
+    const data = (await res.json()) as { hits?: HackerNewsHit[] }
+    const items: NewsItem[] = []
+    const seen = new Set<string>()
+    for (const hit of data.hits ?? []) {
+      const title = (hit.title || hit.story_title || '').trim()
+      if (!title) continue
+      const objectId = (hit.objectID || '').trim()
+      const link = (hit.url || hit.story_url || (objectId ? `https://news.ycombinator.com/item?id=${objectId}` : '')).trim()
+      if (!link) continue
+      const key = normalizeStoryUrl(link)
+      if (seen.has(key)) continue
+      seen.add(key)
+      const parsed = hit.created_at ? Date.parse(hit.created_at) : NaN
+      items.push({
+        title,
+        link,
+        source: 'Hacker News',
+        publishedAt: Number.isFinite(parsed) ? parsed : null,
+        topic: q,
+      })
+    }
+    return items
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function mergeNews(sources: NewsItem[][]): NewsItem[] {
+  const out: NewsItem[] = []
+  const seenUrls = new Set<string>()
+  const seenTitles = new Set<string>()
+  for (const item of sources.flat()) {
+    const urlKey = normalizeStoryUrl(item.link)
+    const tKey = titleKey(item.title)
+    if ((urlKey && seenUrls.has(urlKey)) || (tKey && seenTitles.has(tKey))) continue
+    if (urlKey) seenUrls.add(urlKey)
+    if (tKey) seenTitles.add(tKey)
+    out.push(item)
+  }
+  return out
+    .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0))
+    .slice(0, MAX_ITEMS)
+}
+
+export async function fetchTopicNews(topic: string): Promise<NewsItem[]> {
+  const q = topic.trim()
+  if (!q) return []
+  const [google, hackerNews] = await Promise.all([fetchGoogleNews(q), fetchHackerNews(q)])
+  return mergeNews([google, hackerNews])
 }

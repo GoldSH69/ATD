@@ -10,19 +10,32 @@ import type { AppSettings } from './types'
  */
 
 const ENC_PREFIX = 'enc:v1:'
+const DEFAULT_THREADS_SCOPES = 'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies'
 
 export function defaultSettings(): AppSettings {
   return {
     theme: 'dark',
+    language: 'en',
     onboarded: false,
     topics: ['artificial intelligence', 'technology', 'startups'],
     llm: {
       provider: 'local',
       claude: { apiKey: '', model: 'claude-sonnet-5' },
       openai: { apiKey: '', model: 'gpt-4o-mini' },
-      local: { baseUrl: 'http://localhost:11434/v1', model: 'llama3.1', apiKey: '' },
+      gemini: { apiKey: '', model: 'gemini-3.5-flash' },
+      local: { baseUrl: 'http://127.0.0.1:8080/v1/chat/completions', model: 'gemma4-v2', apiKey: '' },
+      other: { baseUrl: '', model: '', apiKey: '', headersJson: '{}', bodyJson: '{\n  "max_tokens": 1024,\n  "temperature": 0.8\n}' },
     },
-    threads: { accessToken: '', userId: '', username: '' },
+    threads: {
+      accessToken: '',
+      userId: '',
+      username: '',
+      appId: '',
+      appSecret: '',
+      redirectUri: 'http://127.0.0.1:31242/threads/oauth/callback',
+      scopes: DEFAULT_THREADS_SCOPES,
+      tokenExpiresAt: null,
+    },
     style: { notes: '', samples: [] },
     autoDraft: { enabled: false, intervalMinutes: 120, maxPerRun: 2 },
   }
@@ -54,13 +67,23 @@ function mapSecrets(s: AppSettings, fn: (v: string) => string): AppSettings {
       ...s.llm,
       claude: { ...s.llm.claude, apiKey: fn(s.llm.claude.apiKey) },
       openai: { ...s.llm.openai, apiKey: fn(s.llm.openai.apiKey) },
+      gemini: { ...s.llm.gemini, apiKey: fn(s.llm.gemini.apiKey) },
       local: { ...s.llm.local, apiKey: fn(s.llm.local.apiKey) },
+      other: { ...s.llm.other, apiKey: fn(s.llm.other.apiKey) },
     },
-    threads: { ...s.threads, accessToken: fn(s.threads.accessToken) },
+    threads: {
+      ...s.threads,
+      accessToken: fn(s.threads.accessToken),
+      appSecret: fn(s.threads.appSecret),
+    },
   }
 }
 
 const str = (v: unknown, fallback: string): string => (typeof v === 'string' ? v : fallback)
+const language = (v: unknown): AppSettings['language'] =>
+  v === 'es' || v === 'ko' || v === 'zh' || v === 'ja' || v === 'fr' || v === 'de' || v === 'pt'
+    ? v
+    : 'en'
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 
@@ -73,11 +96,16 @@ function normalize(raw: Partial<AppSettings> | null): AppSettings {
   const topics = strArr(raw.topics).map((t) => t.trim()).filter(Boolean)
   return {
     theme: raw.theme === 'light' ? 'light' : raw.theme === 'dark' ? 'dark' : d.theme,
+    language: language(raw.language),
     onboarded: raw.onboarded === true,
     topics: Array.isArray(raw.topics) ? topics : d.topics,
     llm: {
       provider:
-        raw.llm?.provider === 'claude' || raw.llm?.provider === 'openai' || raw.llm?.provider === 'local'
+        raw.llm?.provider === 'claude' ||
+        raw.llm?.provider === 'openai' ||
+        raw.llm?.provider === 'gemini' ||
+        raw.llm?.provider === 'local' ||
+        raw.llm?.provider === 'other'
           ? raw.llm.provider
           : d.llm.provider,
       claude: {
@@ -88,16 +116,35 @@ function normalize(raw: Partial<AppSettings> | null): AppSettings {
         apiKey: str(raw.llm?.openai?.apiKey, ''),
         model: str(raw.llm?.openai?.model, d.llm.openai.model) || d.llm.openai.model,
       },
+      gemini: {
+        apiKey: str(raw.llm?.gemini?.apiKey, ''),
+        model: str(raw.llm?.gemini?.model, d.llm.gemini.model) || d.llm.gemini.model,
+      },
       local: {
         baseUrl: str(raw.llm?.local?.baseUrl, d.llm.local.baseUrl) || d.llm.local.baseUrl,
         model: str(raw.llm?.local?.model, d.llm.local.model) || d.llm.local.model,
         apiKey: str(raw.llm?.local?.apiKey, ''),
+      },
+      other: {
+        baseUrl: str(raw.llm?.other?.baseUrl, d.llm.other.baseUrl),
+        model: str(raw.llm?.other?.model, d.llm.other.model),
+        apiKey: str(raw.llm?.other?.apiKey, ''),
+        headersJson: str(raw.llm?.other?.headersJson, d.llm.other.headersJson) || '{}',
+        bodyJson: str(raw.llm?.other?.bodyJson, d.llm.other.bodyJson) || '{}',
       },
     },
     threads: {
       accessToken: str(raw.threads?.accessToken, ''),
       userId: str(raw.threads?.userId, '').trim(),
       username: str(raw.threads?.username, ''),
+      appId: str(raw.threads?.appId, '').trim(),
+      appSecret: str(raw.threads?.appSecret, ''),
+      redirectUri: str(raw.threads?.redirectUri, d.threads.redirectUri).trim() || d.threads.redirectUri,
+      scopes: str(raw.threads?.scopes, d.threads.scopes).trim() || d.threads.scopes,
+      tokenExpiresAt:
+        typeof raw.threads?.tokenExpiresAt === 'number' && Number.isFinite(raw.threads.tokenExpiresAt)
+          ? raw.threads.tokenExpiresAt
+          : null,
     },
     style: { notes: str(raw.style?.notes, ''), samples: strArr(raw.style?.samples) },
     autoDraft: {

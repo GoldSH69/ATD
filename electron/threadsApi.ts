@@ -89,9 +89,16 @@ const isTransientPublishError = (err: unknown): boolean => {
   return /not ready|not found|not finished|not available|try again|temporarily/i.test(m)
 }
 
-async function publish(cfg: ThreadsCfg, text: string, replyToId?: string): Promise<{ id: string; permalink?: string }> {
+async function publish(
+  cfg: ThreadsCfg,
+  text: string,
+  replyToId?: string,
+  imageUrl?: string
+): Promise<{ id: string; permalink?: string }> {
   const u = uid(cfg)
-  const createParams: Record<string, string> = { media_type: 'TEXT', text }
+  const createParams: Record<string, string> = imageUrl
+    ? { media_type: 'IMAGE', image_url: imageUrl, text }
+    : { media_type: 'TEXT', text }
   if (replyToId) createParams.reply_to_id = replyToId
   const created = await apiPost<{ id?: string }>(cfg, `/${u}/threads`, createParams)
   if (typeof created.id !== 'string' || !created.id) {
@@ -121,8 +128,12 @@ async function publish(cfg: ThreadsCfg, text: string, replyToId?: string): Promi
   return { id: mediaId, permalink }
 }
 
-export async function publishPost(cfg: ThreadsCfg, text: string): Promise<{ id: string; permalink?: string }> {
-  return publish(cfg, text)
+export async function publishPost(
+  cfg: ThreadsCfg,
+  text: string,
+  imageUrl?: string
+): Promise<{ id: string; permalink?: string }> {
+  return publish(cfg, text, undefined, imageUrl)
 }
 
 export async function publishReply(

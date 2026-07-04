@@ -2,7 +2,8 @@
  *  (the app tsconfig only includes src/, so the shapes are duplicated here). */
 
 export type ThemeMode = 'light' | 'dark'
-export type LlmProviderKind = 'claude' | 'openai' | 'local'
+export type LanguageCode = 'en' | 'es' | 'ko' | 'zh' | 'ja' | 'fr' | 'de' | 'pt'
+export type LlmProviderKind = 'claude' | 'openai' | 'gemini' | 'local' | 'other'
 export type DraftKind = 'post' | 'reply'
 export type DraftStatus = 'draft' | 'scheduled' | 'posting' | 'posted' | 'failed'
 
@@ -10,13 +11,28 @@ export interface LlmSettings {
   provider: LlmProviderKind
   claude: { apiKey: string; model: string }
   openai: { apiKey: string; model: string }
+  gemini: { apiKey: string; model: string }
   local: { baseUrl: string; model: string; apiKey: string }
+  other: { baseUrl: string; model: string; apiKey: string; headersJson: string; bodyJson: string }
+}
+
+export interface ImageCandidate {
+  url: string
+  thumbUrl: string
+  title: string
+  source: string
+  pageUrl: string
 }
 
 export interface ThreadsSettings {
   accessToken: string
   userId: string
   username: string
+  appId: string
+  appSecret: string
+  redirectUri: string
+  scopes: string
+  tokenExpiresAt: number | null
 }
 
 export interface StyleSettings {
@@ -32,6 +48,7 @@ export interface AutoDraftSettings {
 
 export interface AppSettings {
   theme: ThemeMode
+  language: LanguageCode
   onboarded: boolean
   topics: string[]
   llm: LlmSettings
@@ -47,6 +64,10 @@ export interface Draft {
   topic?: string
   sourceTitle?: string
   sourceUrl?: string
+  imageUrl?: string
+  imageThumbUrl?: string
+  imageTitle?: string
+  imagePageUrl?: string
   replyToId?: string
   replyToText?: string
   replyToUsername?: string
@@ -87,6 +108,13 @@ export interface UnansweredReply {
 export interface TestResult {
   ok: boolean
   message: string
+}
+
+export interface ThreadsOAuthResult extends TestResult {
+  accessToken?: string
+  userId?: string
+  username?: string
+  tokenExpiresAt?: number | null
 }
 
 export interface GenerateResult {

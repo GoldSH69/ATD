@@ -1,18 +1,39 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../store/appStore'
-import type { Draft } from '../types'
+import { shellText } from '../i18n'
+import type { Draft, ImageCandidate } from '../types'
 import { fmtDateTime, snippet, timeAgo, toDatetimeLocal } from '../util/format'
 
 const THREADS_CHAR_LIMIT = 500
 
 type Busy = 'save' | 'schedule' | 'post' | null
 
+function wordCount(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length
+}
+
 function DraftEditor({ draft }: { draft: Draft }) {
+  const settings = useApp((s) => s.settings)
   const upsertDraft = useApp((s) => s.upsertDraft)
   const deleteDraft = useApp((s) => s.deleteDraft)
   const selectDraft = useApp((s) => s.selectDraft)
   const toast = useApp((s) => s.toast)
+  const textUi = shellText(settings?.language)
   const [text, setText] = useState(draft.text)
+  const [image, setImage] = useState<ImageCandidate | null>(
+    draft.imageUrl
+      ? {
+          url: draft.imageUrl,
+          thumbUrl: draft.imageThumbUrl || draft.imageUrl,
+          title: draft.imageTitle || 'Selected image',
+          source: 'Selected image',
+          pageUrl: draft.imagePageUrl || draft.imageUrl,
+        }
+      : null
+  )
+  const [imageQuery, setImageQuery] = useState('')
+  const [imageOptions, setImageOptions] = useState<ImageCandidate[]>([])
+  const [imageBusy, setImageBusy] = useState(false)
   const [scheduleAt, setScheduleAt] = useState(() => toDatetimeLocal(Date.now() + 3600000))
   const [busy, setBusy] = useState<Busy>(null)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -24,14 +45,69 @@ function DraftEditor({ draft }: { draft: Draft }) {
     [],
   )
 
-  const dirty = text !== draft.text
+  const imageDirty =
+    (image?.url || '') !== (draft.imageUrl || '') ||
+    (image?.thumbUrl || '') !== (draft.imageThumbUrl || '') ||
+    (image?.title || '') !== (draft.imageTitle || '') ||
+    (image?.pageUrl || '') !== (draft.imagePageUrl || '')
+  const dirty = text !== draft.text || imageDirty
   const over = text.length > THREADS_CHAR_LIMIT
+  const words = wordCount(text)
+  const postsNeeded = Math.max(1, Math.ceil(text.length / THREADS_CHAR_LIMIT))
   const sourceUrl = draft.sourceUrl
+
+  const withDraftEdits = (patch: Partial<Draft> = {}): Draft => ({
+    ...draft,
+    ...patch,
+    text,
+    imageUrl: image?.url,
+    imageThumbUrl: image?.thumbUrl,
+    imageTitle: image?.title,
+    imagePageUrl: image?.pageUrl,
+  })
 
   const save = async () => {
     setBusy('save')
-    await upsertDraft({ ...draft, text })
+    await upsertDraft(withDraftEdits())
     setBusy(null)
+  }
+
+  const searchImages = async (query: string) => {
+    const q = query.trim()
+    if (!q) return
+    setImageBusy(true)
+    setImageOptions([])
+    try {
+      setImageQuery(q)
+      const res = await window.api.imageSearch(q)
+      if (!res.ok) {
+        toast('err', res.message)
+        return
+      }
+      setImageOptions(res.images)
+    } catch (err) {
+      toast('err', err instanceof Error ? err.message : String(err))
+    } finally {
+      setImageBusy(false)
+    }
+  }
+
+  const suggestImages = async () => {
+    setImageBusy(true)
+    setImageOptions([])
+    try {
+      const keywordRes = await window.api.imageKeywords({
+        topic: draft.topic,
+        title: draft.sourceTitle,
+        text,
+      })
+      const query = keywordRes.ok ? keywordRes.text : draft.topic || draft.sourceTitle || text.slice(0, 80)
+      await searchImages(query)
+    } catch (err) {
+      toast('err', err instanceof Error ? err.message : String(err))
+    } finally {
+      setImageBusy(false)
+    }
   }
 
   const schedule = async () => {
@@ -53,7 +129,7 @@ function DraftEditor({ draft }: { draft: Draft }) {
       return
     }
     setBusy('schedule')
-    await upsertDraft({ ...draft, text, status: 'scheduled', scheduledAt: ts })
+    await upsertDraft(withDraftEdits({ status: 'scheduled', scheduledAt: ts }))
     setBusy(null)
     toast('ok', `Scheduled for ${fmtDateTime(ts)}`)
     selectDraft(null)
@@ -62,7 +138,7 @@ function DraftEditor({ draft }: { draft: Draft }) {
   const postNow = async () => {
     setBusy('post')
     try {
-      if (dirty) await upsertDraft({ ...draft, text })
+      if (dirty) await upsertDraft(withDraftEdits())
       const res = await window.api.draftPostNow(draft.id)
       toast(res.ok ? 'ok' : 'err', res.message)
       if (res.ok) selectDraft(null)
@@ -115,13 +191,66 @@ function DraftEditor({ draft }: { draft: Draft }) {
         placeholder="Write your post…"
         autoFocus
       />
+      <div className="image-picker">
+        <div className="row">
+          <button className="btn small" disabled={imageBusy} onClick={() => void suggestImages()}>
+            {imageBusy ? textUi.findingImages : textUi.findOptionalImage}
+          </button>
+          <input
+            className="input grow"
+            value={imageQuery}
+            placeholder={textUi.imageKeywords}
+            onChange={(e) => setImageQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void searchImages(imageQuery)
+              }
+            }}
+          />
+          <button className="btn small" disabled={imageBusy || !imageQuery.trim()} onClick={() => void searchImages(imageQuery)}>
+            {textUi.searchImages}
+          </button>
+          {image && (
+            <button className="btn ghost small" onClick={() => setImage(null)}>
+              {textUi.removeImage}
+            </button>
+          )}
+        </div>
+        {image && (
+          <div className="selected-image">
+            <img src={image.thumbUrl} alt="" />
+            <div>
+              <div>{image.title}</div>
+              <button className="link" onClick={() => void window.api.openExternal(image.pageUrl)}>
+                {textUi.source}
+              </button>
+            </div>
+          </div>
+        )}
+        {imageOptions.length > 0 && (
+          <div className="image-grid">
+            {imageOptions.map((candidate) => (
+              <button
+                key={candidate.url}
+                className={`image-card${image?.url === candidate.url ? ' selected' : ''}`}
+                onClick={() => setImage(candidate)}
+              >
+                <img src={candidate.thumbUrl} alt="" />
+                <span>{candidate.title}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="editor-footer">
-        <span className={`char-count${over ? ' over' : ''}`}>
-          {text.length} / {THREADS_CHAR_LIMIT}
+        <span className={`draft-metrics${over ? ' over' : ''}`}>
+          {text.length} / {THREADS_CHAR_LIMIT} {textUi.chars} · {words} {words === 1 ? textUi.word : textUi.words} ·{' '}
+          {postsNeeded} {postsNeeded === 1 ? textUi.post : textUi.posts}
         </span>
         <div className="grow" />
         <button className="btn" disabled={!dirty || busy !== null} onClick={() => void save()}>
-          {busy === 'save' ? 'Saving…' : 'Save'}
+          {busy === 'save' ? textUi.saving : textUi.save}
         </button>
         <input
           type="datetime-local"
@@ -135,21 +264,21 @@ function DraftEditor({ draft }: { draft: Draft }) {
           disabled={!text.trim() || over || busy !== null}
           onClick={() => void schedule()}
         >
-          {busy === 'schedule' ? 'Scheduling…' : 'Schedule'}
+          {busy === 'schedule' ? textUi.scheduling : textUi.schedule}
         </button>
         <button
           className="btn primary"
           disabled={!text.trim() || over || busy !== null}
           onClick={() => void postNow()}
         >
-          {busy === 'post' ? 'Posting…' : 'Post now'}
+          {busy === 'post' ? textUi.posting : textUi.postNow}
         </button>
         <button
           className={`btn ${confirmDel ? 'danger' : 'ghost'}`}
           disabled={busy !== null}
           onClick={onDelete}
         >
-          {confirmDel ? 'Confirm delete?' : 'Delete'}
+          {confirmDel ? textUi.confirmDelete : textUi.delete}
         </button>
       </div>
     </div>
@@ -157,11 +286,13 @@ function DraftEditor({ draft }: { draft: Draft }) {
 }
 
 export default function DraftsView() {
+  const settings = useApp((s) => s.settings)
   const drafts = useApp((s) => s.drafts)
   const selectedDraftId = useApp((s) => s.selectedDraftId)
   const selectDraft = useApp((s) => s.selectDraft)
   const upsertDraft = useApp((s) => s.upsertDraft)
   const [creating, setCreating] = useState(false)
+  const textUi = shellText(settings?.language)
 
   const list = drafts
     .filter((d) => d.status === 'draft' || d.status === 'failed')
@@ -192,14 +323,14 @@ export default function DraftsView() {
   return (
     <div className="view">
       <div className="view-header">
-        <div className="view-title">Drafts</div>
+        <div className="view-title">{textUi.drafts}</div>
         <div className="view-sub">
-          {list.length} {list.length === 1 ? 'draft' : 'drafts'}
-          {failedCount > 0 && ` · ${failedCount} failed`}
+          {list.length} {list.length === 1 ? textUi.drafts.toLowerCase() : textUi.drafts.toLowerCase()}
+          {failedCount > 0 && ` · ${failedCount} ${textUi.failed}`}
         </div>
         <div className="view-actions">
           <button className="btn small" disabled={creating} onClick={() => void newDraft()}>
-            New draft
+            {textUi.newDraft}
           </button>
         </div>
       </div>
@@ -208,9 +339,9 @@ export default function DraftsView() {
           <div className="pane-list">
             {list.length === 0 ? (
               <div className="empty">
-                <div>No drafts yet. Generate from News, answer Replies, or start one from scratch.</div>
+                <div>{textUi.noDrafts}</div>
                 <button className="btn" disabled={creating} onClick={() => void newDraft()}>
-                  New draft
+                  {textUi.newDraft}
                 </button>
               </div>
             ) : (
@@ -222,8 +353,8 @@ export default function DraftsView() {
                 >
                   <div className="item-title">
                     <span>{snippet(d.text || '(empty)', 60)}</span>
-                    {d.kind === 'reply' && <span className="badge">reply</span>}
-                    {d.status === 'failed' && <span className="badge failed">failed</span>}
+                    {d.kind === 'reply' && <span className="badge">{textUi.replies}</span>}
+                    {d.status === 'failed' && <span className="badge failed">{textUi.failed}</span>}
                   </div>
                   <div className="item-meta">
                     <span>
@@ -242,7 +373,7 @@ export default function DraftsView() {
             {selected ? (
               <DraftEditor key={selected.id} draft={selected} />
             ) : (
-              <div className="empty">Select a draft to review</div>
+              <div className="empty">{textUi.selectDraft}</div>
             )}
           </div>
         </div>

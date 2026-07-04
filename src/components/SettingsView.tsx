@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../store/appStore'
+import ThreadsTokenHelp from './ThreadsTokenHelp'
 import type {
   AppSettings,
   AutoDraftSettings,
+  LanguageCode,
   LlmProviderKind,
   LlmSettings,
   TestResult,
   ThemeMode,
   ThreadsSettings,
+  ViewId,
 } from '../types'
 import { snippet } from '../util/format'
 
@@ -16,16 +19,30 @@ const THEMES: { id: ThemeMode; label: string }[] = [
   { id: 'dark', label: 'Dark' },
 ]
 
+const LANGUAGES: { id: LanguageCode; label: string }[] = [
+  { id: 'en', label: 'English' },
+  { id: 'es', label: 'Español' },
+  { id: 'ko', label: '한국어' },
+  { id: 'zh', label: '中文' },
+  { id: 'ja', label: '日本語' },
+  { id: 'fr', label: 'Français' },
+  { id: 'de', label: 'Deutsch' },
+  { id: 'pt', label: 'Português' },
+]
+
 const PROVIDERS: { id: LlmProviderKind; label: string }[] = [
   { id: 'claude', label: 'Claude' },
   { id: 'openai', label: 'ChatGPT' },
+  { id: 'gemini', label: 'Gemini' },
   { id: 'local', label: 'Local LLM' },
+  { id: 'other', label: 'Other' },
 ]
 
 export default function SettingsView() {
   // settings is loaded before any view renders, so the non-null cast is safe here
   const stored = useApp((s) => s.settings) as AppSettings
   const saveSettings = useApp((s) => s.saveSettings)
+  const setView = useApp((s) => s.setView)
   const setShowOnboarding = useApp((s) => s.setShowOnboarding)
   const toast = useApp((s) => s.toast)
 
@@ -35,8 +52,11 @@ export default function SettingsView() {
   const [threadsResult, setThreadsResult] = useState<TestResult | null>(null)
   const [llmResult, setLlmResult] = useState<TestResult | null>(null)
   const [testingThreads, setTestingThreads] = useState(false)
+  const [connectingThreads, setConnectingThreads] = useState(false)
   const [testingLlm, setTestingLlm] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [pendingView, setPendingView] = useState<ViewId | null>(null)
+  const [showTokenHelp, setShowTokenHelp] = useState(false)
   const [topicInput, setTopicInput] = useState('')
   const [sampleInput, setSampleInput] = useState('')
 
@@ -63,6 +83,30 @@ export default function SettingsView() {
   const setAuto = (patch: Partial<AutoDraftSettings>) =>
     edit((f) => ({ ...f, autoDraft: { ...f.autoDraft, ...patch } }))
 
+  useEffect(() => {
+    if (!dirty) return
+    const onClickCapture = (event: MouseEvent) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      const button = target.closest<HTMLElement>('[data-view]')
+      const nextView = button?.dataset.view as ViewId | undefined
+      if (!nextView || nextView === 'settings') return
+      event.preventDefault()
+      event.stopPropagation()
+      setPendingView(nextView)
+    }
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    document.addEventListener('click', onClickCapture, true)
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      document.removeEventListener('click', onClickCapture, true)
+      window.removeEventListener('beforeunload', onBeforeUnload)
+    }
+  }, [dirty])
+
   // Theme applies immediately (like the sidebar toggle) rather than staging in the
   // dirty form, so a Save of other fields can never revert a theme set elsewhere.
   const applyThemeNow = (theme: ThemeMode) => {
@@ -71,16 +115,41 @@ export default function SettingsView() {
     if (latest) void saveSettings({ ...latest, theme })
   }
 
-  const save = async () => {
+  const persistForm = async (): Promise<boolean> => {
     setSaving(true)
     // Keep whatever theme is current in the store; theme is not part of this form's diff.
     const latest = useApp.getState().settings
     const ok = await saveSettings({ ...form, theme: latest?.theme ?? form.theme })
     setSaving(false)
+    return ok
+  }
+
+  const save = async () => {
+    const ok = await persistForm()
     if (ok) {
       setDirty(false)
       toast('ok', 'Settings saved')
     }
+  }
+
+  const saveAndLeave = async () => {
+    if (!pendingView) return
+    const ok = await persistForm()
+    if (!ok) return
+    const next = pendingView
+    setPendingView(null)
+    setDirty(false)
+    toast('ok', 'Settings saved')
+    setView(next)
+  }
+
+  const discardAndLeave = () => {
+    if (!pendingView) return
+    const next = pendingView
+    setForm(stored)
+    setDirty(false)
+    setPendingView(null)
+    setView(next)
   }
 
   const testThreads = async () => {
@@ -102,6 +171,35 @@ export default function SettingsView() {
       setThreadsResult({ ok: false, message: err instanceof Error ? err.message : String(err) })
     }
     setTestingThreads(false)
+  }
+
+  const connectThreadsOAuth = async () => {
+    setConnectingThreads(true)
+    setThreadsResult(null)
+    try {
+      const res = await window.api.threadsOAuthStart({
+        appId: form.threads.appId,
+        appSecret: form.threads.appSecret,
+        redirectUri: form.threads.redirectUri,
+        scopes: form.threads.scopes,
+      })
+      setThreadsResult({ ok: res.ok, message: res.message })
+      if (res.ok && res.accessToken) {
+        edit((f) => ({
+          ...f,
+          threads: {
+            ...f.threads,
+            accessToken: res.accessToken || f.threads.accessToken,
+            userId: res.userId || f.threads.userId,
+            username: res.username || f.threads.username,
+            tokenExpiresAt: res.tokenExpiresAt ?? f.threads.tokenExpiresAt,
+          },
+        }))
+      }
+    } catch (err) {
+      setThreadsResult({ ok: false, message: err instanceof Error ? err.message : String(err) })
+    }
+    setConnectingThreads(false)
   }
 
   const testLlm = async () => {
@@ -168,6 +266,7 @@ export default function SettingsView() {
   }
 
   return (
+    <>
     <div className="view">
       <div className="view-header">
         <div className="view-title">Settings</div>
@@ -199,12 +298,27 @@ export default function SettingsView() {
                 ))}
               </div>
             </div>
+            <div className="field">
+              <span className="field-label">Language</span>
+              <select
+                className="select"
+                value={form.language}
+                onChange={(e) => edit((f) => ({ ...f, language: e.target.value as LanguageCode }))}
+              >
+                {LANGUAGES.map((language) => (
+                  <option key={language.id} value={language.id}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+              <span className="hint">Full localization is applied across app navigation and primary workflows.</span>
+            </div>
           </div>
 
           <div className="section">
             <div className="section-title">Threads API</div>
             <div className="section-desc">
-              Create a Meta app with the Threads API use case to get a long-lived access token.{' '}
+              Paste a Threads access token for this desktop app. OAuth app fields are optional advanced setup.{' '}
               <button
                 className="btn ghost small"
                 onClick={() => void window.api.openExternal('https://developers.facebook.com/docs/threads')}
@@ -213,7 +327,12 @@ export default function SettingsView() {
               </button>
             </div>
             <div className="field">
-              <span className="field-label">Access token</span>
+              <div className="field-label-row">
+                <span className="field-label">Access token</span>
+                <button className="btn ghost small" onClick={() => setShowTokenHelp(true)}>
+                  How to get token
+                </button>
+              </div>
               <input
                 className="input mono"
                 type="password"
@@ -221,6 +340,53 @@ export default function SettingsView() {
                 onChange={(e) => setThreads({ accessToken: e.target.value })}
               />
             </div>
+            <details className="advanced-panel">
+              <summary>Advanced OAuth setup (optional)</summary>
+            <div className="field">
+              <span className="field-label">App ID</span>
+              <input
+                className="input mono"
+                value={form.threads.appId}
+                onChange={(e) => setThreads({ appId: e.target.value })}
+              />
+            </div>
+            <div className="field">
+              <span className="field-label">App secret</span>
+              <input
+                className="input mono"
+                type="password"
+                value={form.threads.appSecret}
+                onChange={(e) => setThreads({ appSecret: e.target.value })}
+              />
+            </div>
+            <div className="field">
+              <span className="field-label">Redirect URI</span>
+              <input
+                className="input mono"
+                value={form.threads.redirectUri}
+                onChange={(e) => setThreads({ redirectUri: e.target.value })}
+              />
+              <span className="hint">Register this exact URI in the Meta app OAuth settings.</span>
+            </div>
+            <div className="field">
+              <span className="field-label">Scopes</span>
+              <input
+                className="input mono"
+                value={form.threads.scopes}
+                onChange={(e) => setThreads({ scopes: e.target.value })}
+              />
+            </div>
+            <div className="row">
+              <button className="btn" disabled={connectingThreads} onClick={() => void connectThreadsOAuth()}>
+                {connectingThreads ? 'Waiting for browser…' : 'Connect with Threads OAuth'}
+              </button>
+              {form.threads.tokenExpiresAt && (
+                <span className="muted">
+                  Token expires {new Date(form.threads.tokenExpiresAt).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+            </details>
             <div className="field">
               <span className="field-label">User ID</span>
               <input
@@ -303,6 +469,29 @@ export default function SettingsView() {
                 </div>
               </>
             )}
+            {form.llm.provider === 'gemini' && (
+              <>
+                <div className="field">
+                  <span className="field-label">API key</span>
+                  <input
+                    className="input mono"
+                    type="password"
+                    value={form.llm.gemini.apiKey}
+                    onChange={(e) => setLlm((l) => ({ ...l, gemini: { ...l.gemini, apiKey: e.target.value } }))}
+                  />
+                  <span className="hint">Gemini API key from Google AI Studio.</span>
+                </div>
+                <div className="field">
+                  <span className="field-label">Model</span>
+                  <input
+                    className="input"
+                    placeholder="gemini-3.5-flash"
+                    value={form.llm.gemini.model}
+                    onChange={(e) => setLlm((l) => ({ ...l, gemini: { ...l.gemini, model: e.target.value } }))}
+                  />
+                </div>
+              </>
+            )}
             {form.llm.provider === 'local' && (
               <>
                 <div className="field">
@@ -313,8 +502,8 @@ export default function SettingsView() {
                     onChange={(e) => setLlm((l) => ({ ...l, local: { ...l.local, baseUrl: e.target.value } }))}
                   />
                   <span className="hint">
-                    OpenAI-compatible endpoint. Ollama: http://localhost:11434/v1, LM Studio:
-                    http://localhost:1234/v1
+                    OpenAI-compatible endpoint. Jarvis: http://127.0.0.1:8080/v1/chat/completions,
+                    Ollama: http://localhost:11434/v1, LM Studio: http://localhost:1234/v1
                   </span>
                 </div>
                 <div className="field">
@@ -334,6 +523,56 @@ export default function SettingsView() {
                     onChange={(e) => setLlm((l) => ({ ...l, local: { ...l.local, apiKey: e.target.value } }))}
                   />
                   <span className="hint">Optional.</span>
+                </div>
+              </>
+            )}
+            {form.llm.provider === 'other' && (
+              <>
+                <div className="field">
+                  <span className="field-label">Base URL</span>
+                  <input
+                    className="input mono"
+                    placeholder="https://openrouter.ai/api/v1"
+                    value={form.llm.other.baseUrl}
+                    onChange={(e) => setLlm((l) => ({ ...l, other: { ...l.other, baseUrl: e.target.value } }))}
+                  />
+                  <span className="hint">OpenAI-compatible base URL or full /chat/completions URL.</span>
+                </div>
+                <div className="field">
+                  <span className="field-label">Model</span>
+                  <input
+                    className="input"
+                    placeholder="provider/model-name"
+                    value={form.llm.other.model}
+                    onChange={(e) => setLlm((l) => ({ ...l, other: { ...l.other, model: e.target.value } }))}
+                  />
+                </div>
+                <div className="field">
+                  <span className="field-label">API key</span>
+                  <input
+                    className="input mono"
+                    type="password"
+                    value={form.llm.other.apiKey}
+                    onChange={(e) => setLlm((l) => ({ ...l, other: { ...l.other, apiKey: e.target.value } }))}
+                  />
+                  <span className="hint">Optional if the endpoint does not require bearer auth.</span>
+                </div>
+                <div className="field">
+                  <span className="field-label">Headers JSON</span>
+                  <textarea
+                    className="textarea mono"
+                    value={form.llm.other.headersJson}
+                    onChange={(e) => setLlm((l) => ({ ...l, other: { ...l.other, headersJson: e.target.value } }))}
+                  />
+                </div>
+                <div className="field">
+                  <span className="field-label">Request JSON</span>
+                  <textarea
+                    className="textarea mono"
+                    value={form.llm.other.bodyJson}
+                    onChange={(e) => setLlm((l) => ({ ...l, other: { ...l.other, bodyJson: e.target.value } }))}
+                  />
+                  <span className="hint">Merged into the chat-completions body. Use this for temperature, top_p, max_tokens, provider extras.</span>
                 </div>
               </>
             )}
@@ -478,5 +717,28 @@ export default function SettingsView() {
         </div>
       </div>
     </div>
+    {pendingView && (
+      <div className="modal-backdrop">
+        <div className="confirm-modal" role="dialog" aria-modal="true" aria-label="Unsaved settings">
+          <div className="confirm-title">Save settings?</div>
+          <div className="confirm-body">
+            You have unsaved settings changes. Save them before leaving this screen?
+          </div>
+          <div className="confirm-actions">
+            <button className="btn ghost" disabled={saving} onClick={discardAndLeave}>
+              Discard
+            </button>
+            <button className="btn" disabled={saving} onClick={() => setPendingView(null)}>
+              Stay
+            </button>
+            <button className="btn primary" disabled={saving} onClick={() => void saveAndLeave()}>
+              {saving ? 'Saving…' : 'Save and leave'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {showTokenHelp && <ThreadsTokenHelp onClose={() => setShowTokenHelp(false)} />}
+    </>
   )
 }

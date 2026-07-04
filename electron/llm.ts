@@ -1,17 +1,29 @@
 import type { LlmSettings, TestResult } from './types'
 
-/** LLM provider adapters: Anthropic Claude, OpenAI, and any local
- *  OpenAI-compatible server (Ollama / LM Studio). */
+/** LLM provider adapters: Anthropic Claude, OpenAI, Gemini, and
+ *  OpenAI-compatible custom/local servers. */
 
 const ANTHROPIC_VERSION = '2023-06-01'
 const TEST_TIMEOUT_MS = 15_000
 // Local models can be slow to load/generate, so generation gets a long leash.
 const GEN_TIMEOUT_MS = 120_000
+const GEMINI_OPENAI_BASE = 'https://generativelanguage.googleapis.com/v1beta/openai'
 
 type Json = Record<string, unknown>
 const asObj = (v: unknown): Json => (v !== null && typeof v === 'object' ? (v as Json) : {})
 const snippet = (text: string): string => text.replace(/\s+/g, ' ').trim().slice(0, 200)
 const stripTrailingSlashes = (u: string): string => u.trim().replace(/\/+$/, '')
+const stripChatCompletionsPath = (u: string): string =>
+  stripTrailingSlashes(u).replace(/\/chat\/completions$/i, '')
+
+function localChatUrl(input: string): string {
+  const base = stripTrailingSlashes(input)
+  return /\/chat\/completions$/i.test(base) ? base : `${base}/chat/completions`
+}
+
+function localModelsUrl(input: string): string {
+  return `${stripChatCompletionsPath(input)}/models`
+}
 
 function describeError(err: unknown): string {
   if (!(err instanceof Error)) return String(err)
@@ -86,6 +98,31 @@ function modelIds(data: unknown): string[] {
   return list.map((m) => asObj(m).id).filter((id): id is string => typeof id === 'string')
 }
 
+function parseJsonObject(label: string, raw: string): Json {
+  const text = raw.trim()
+  if (!text) return {}
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error(`${label} must be valid JSON`)
+  }
+  if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') {
+    throw new Error(`${label} must be a JSON object`)
+  }
+  return parsed as Json
+}
+
+function parseHeadersJson(raw: string): Record<string, string> {
+  const parsed = parseJsonObject('Headers JSON', raw)
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value !== 'string') throw new Error(`Header "${key}" must be a string`)
+    out[key] = value
+  }
+  return out
+}
+
 async function testHosted(
   label: string,
   url: string,
@@ -108,7 +145,7 @@ async function testLocal(local: LlmSettings['local']): Promise<TestResult> {
   const headers: Record<string, string> = apiKey ? { authorization: `Bearer ${apiKey}` } : {}
   let res: HttpReply
   try {
-    res = await request(`${base}/models`, { headers }, TEST_TIMEOUT_MS)
+    res = await request(localModelsUrl(base), { headers }, TEST_TIMEOUT_MS)
   } catch (err) {
     return {
       ok: false,
@@ -131,6 +168,43 @@ async function testLocal(local: LlmSettings['local']): Promise<TestResult> {
   }
 }
 
+async function testOpenAiCompatible(
+  label: string,
+  cfg: { baseUrl: string; model: string; apiKey: string; headersJson?: string },
+  apiKeyRequired: boolean
+): Promise<TestResult> {
+  const base = stripTrailingSlashes(cfg.baseUrl)
+  if (!base) return { ok: false, message: 'Base URL is required' }
+  const invalid = validateHttpBase(base)
+  if (invalid) return { ok: false, message: invalid }
+  if (apiKeyRequired && !cfg.apiKey.trim()) return { ok: false, message: 'API key is required' }
+  let extraHeaders: Record<string, string> = {}
+  try {
+    extraHeaders = cfg.headersJson ? parseHeadersJson(cfg.headersJson) : {}
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) }
+  }
+  const headers = {
+    ...extraHeaders,
+    ...(cfg.apiKey.trim() ? { authorization: `Bearer ${cfg.apiKey.trim()}` } : {}),
+  }
+  try {
+    const res = await request(localModelsUrl(base), { headers }, TEST_TIMEOUT_MS)
+    if (!res.ok) return { ok: false, message: httpMessage(label, res.status, res.body) }
+    const ids = modelIds(parseJson(label, res.status, res.body))
+    const model = cfg.model.trim()
+    const found = model !== '' && ids.some((id) => id === model || id.startsWith(`${model}:`))
+    if (found) return { ok: true, message: `Connected to ${label} — model "${model}" is available.` }
+    const listed =
+      ids.length === 0
+        ? 'no models listed'
+        : `available: ${ids.slice(0, 5).join(', ')}${ids.length > 5 ? ', …' : ''}`
+    return { ok: true, message: `Connected to ${label} — model "${model}" not found — ${listed}.` }
+  } catch (err) {
+    return { ok: false, message: `Could not reach ${base} (${describeError(err)})` }
+  }
+}
+
 export async function testLlm(llm: LlmSettings): Promise<TestResult> {
   try {
     switch (llm.provider) {
@@ -143,8 +217,16 @@ export async function testLlm(llm: LlmSettings): Promise<TestResult> {
         return await testHosted('OpenAI', 'https://api.openai.com/v1/models', llm.openai.apiKey, {
           authorization: `Bearer ${llm.openai.apiKey}`,
         })
+      case 'gemini':
+        return await testOpenAiCompatible(
+          'Gemini',
+          { baseUrl: GEMINI_OPENAI_BASE, model: llm.gemini.model, apiKey: llm.gemini.apiKey },
+          true
+        )
       case 'local':
         return await testLocal(llm.local)
+      case 'other':
+        return await testOpenAiCompatible('Other provider', llm.other, false)
     }
   } catch (err) {
     return { ok: false, message: describeError(err) }
@@ -204,6 +286,14 @@ async function chatCompletion(
   // local OpenAI-compatible servers expect max_tokens — so the caller picks.
   sampling: Json
 ): Promise<string> {
+  const body = {
+    ...sampling,
+    model,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+  }
   let res: HttpReply
   try {
     res = await request(
@@ -211,14 +301,7 @@ async function chatCompletion(
       {
         method: 'POST',
         headers: { ...headers, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          ...sampling,
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: user },
-          ],
-        }),
+        body: JSON.stringify(body),
       },
       GEN_TIMEOUT_MS
     )
@@ -249,6 +332,18 @@ export async function generateText(llm: LlmSettings, system: string, user: strin
         { max_completion_tokens: 2048 }
       )
     }
+    case 'gemini': {
+      if (!llm.gemini.apiKey.trim()) throw new Error('Gemini API key is required')
+      return chatCompletion(
+        'Gemini',
+        `${GEMINI_OPENAI_BASE}/chat/completions`,
+        { authorization: `Bearer ${llm.gemini.apiKey}` },
+        llm.gemini.model,
+        system,
+        user,
+        { max_tokens: 1024, temperature: 0.8 }
+      )
+    }
     case 'local': {
       const base = stripTrailingSlashes(llm.local.baseUrl)
       if (!base) throw new Error('Local LLM base URL is required')
@@ -257,12 +352,30 @@ export async function generateText(llm: LlmSettings, system: string, user: strin
       const apiKey = llm.local.apiKey.trim()
       return chatCompletion(
         'Local LLM',
-        `${base}/chat/completions`,
+        localChatUrl(base),
         apiKey ? { authorization: `Bearer ${apiKey}` } : {},
         llm.local.model,
         system,
         user,
         { max_tokens: 1024, temperature: 0.8 }
+      )
+    }
+    case 'other': {
+      const base = stripTrailingSlashes(llm.other.baseUrl)
+      if (!base) throw new Error('Other provider base URL is required')
+      const invalid = validateHttpBase(base)
+      if (invalid) throw new Error(`Other provider: ${invalid}`)
+      const extraHeaders = parseHeadersJson(llm.other.headersJson)
+      const bodyOverrides = parseJsonObject('Request JSON', llm.other.bodyJson)
+      const apiKey = llm.other.apiKey.trim()
+      return chatCompletion(
+        'Other provider',
+        localChatUrl(base),
+        { ...extraHeaders, ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
+        llm.other.model,
+        system,
+        user,
+        bodyOverrides
       )
     }
   }
