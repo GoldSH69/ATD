@@ -564,6 +564,35 @@ body {
   color: var(--text-faint);
 }
 
+.source-list,
+.custom-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.source-toggle {
+  align-items: flex-start;
+}
+
+.source-toggle strong {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.source-toggle .hint {
+  display: block;
+}
+
+.custom-source-row {
+  display: grid;
+  grid-template-columns: auto minmax(110px, 160px) minmax(220px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
 .row {
   display: flex;
   align-items: center;

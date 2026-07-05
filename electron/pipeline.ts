@@ -114,7 +114,7 @@ export async function runAutoDraft(): Promise<number> {
     const idx = typeof rawIdx === 'number' && Number.isFinite(rawIdx) ? Math.abs(Math.floor(rawIdx)) : 0
     const topic = topics[idx % topics.length]
     await db.set(TOPIC_IDX_KEY, (idx + 1) % topics.length)
-    const news = await fetchTopicNews(topic)
+    const news = await fetchTopicNews({ query: topic, sources: settings.newsSources })
     const usedList = (db.get<string[]>(USED_LINKS_KEY) ?? []).filter((l) => typeof l === 'string')
     const used = new Set(usedList)
     const fresh = news

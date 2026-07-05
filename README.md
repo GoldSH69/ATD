@@ -52,7 +52,7 @@ It is built for a creator workflow where you want leverage, not chaos:
 
 | Feature | What it means |
 | --- | --- |
-| **News/blogs to drafts** | Pick your topics or use presets like science, fashion, lifestyle, finance, travel, and food. Browse Google News RSS, blog-oriented searches, and selective Hacker News for tech topics. |
+| **News/blogs to drafts** | Pick your topics or use presets like science, fashion, lifestyle, finance, travel, and food. Choose Google News RSS, selective Hacker News, Naver News, and custom RSS/Atom feeds. |
 | **Local LLM support** | Run with Jarvis, Ollama, LM Studio, llama.cpp, or another OpenAI-compatible local server for **$0 API cost**. |
 | **Cloud model support** | Use Claude, ChatGPT/OpenAI, Gemini, or a custom OpenAI-compatible provider. |
 | **Image assist** | AI suggests image keywords, AutoThreads searches Wikimedia Commons, and you choose an optional public image. |
@@ -196,7 +196,7 @@ AutoThreads stores app data as local JSON under the OS user-data directory. API 
 | Build | Vite |
 | Packaging | electron-builder |
 | Storage | Dependency-free local JSON |
-| APIs | Threads Graph API, Google News RSS, Hacker News Algolia API, Wikimedia Commons |
+| APIs | Threads Graph API, Google News RSS, Hacker News Algolia API, Naver News search, RSS/Atom feeds, Wikimedia Commons |
 
 ## Project Layout
 
@@ -206,7 +206,7 @@ electron/          Main process
   llm.ts           Claude / OpenAI / Gemini / Local / Other adapters
   threadsApi.ts    Threads Graph API client
   threadsOAuth.ts  Optional OAuth callback flow
-  news.ts          Google News RSS, blog-mode searches, selective Hacker News aggregation
+  news.ts          Google News RSS, Naver News, custom RSS/Atom, selective Hacker News aggregation
   images.ts        AI image keywords + Wikimedia Commons search
   drafts.ts        Draft store
   scheduler.ts     Due-post publisher + auto-draft loop
@@ -237,7 +237,7 @@ AutoThreads is intentionally not a black-box autoposter.
 ## Roadmap Ideas
 
 - Multi-account workspaces
-- More direct blog/RSS source controls
+- Per-source scheduling and source health indicators
 - Better image-source controls
 - Draft thread splitting
 - Analytics on posted content
@@ -293,7 +293,7 @@ AutoThreads는 Threads 운영을 AI로 도와주는 데스크톱 앱입니다.
 
 | 기능 | 설명 |
 | --- | --- |
-| **뉴스/블로그 기반 초안** | 관심 주제나 science, fashion, lifestyle, finance, travel, food 같은 프리셋을 선택하면 Google News RSS와 블로그형 검색 결과를 가져오고, 기술 주제에는 Hacker News도 선택적으로 포함합니다. |
+| **뉴스/블로그 기반 초안** | 관심 주제나 science, fashion, lifestyle, finance, travel, food 같은 프리셋을 선택하고 Google News RSS, Hacker News, Naver News, 커스텀 RSS/Atom 피드를 켜고 끌 수 있습니다. |
 | **Local LLM 지원** | Jarvis, Ollama, LM Studio, llama.cpp 같은 로컬 OpenAI 호환 서버를 사용할 수 있습니다. API 비용 없이 실행 가능합니다. |
 | **Claude / ChatGPT / Gemini 지원** | 클라우드 모델을 선호하면 API 키를 넣고 사용할 수 있습니다. |
 | **Other Provider** | OpenAI 호환 커스텀 엔드포인트, 헤더 JSON, 요청 JSON을 설정할 수 있습니다. |

@@ -1,4 +1,4 @@
-import type { NewsItem } from './types'
+import type { NewsItem, NewsSourceSettings } from './types'
 
 /**
  * Topic news over multiple lightweight public sources. Each source degrades to
@@ -16,6 +16,7 @@ export type NewsMode = 'news' | 'blogs'
 export interface NewsFetchInput {
   query: string
   mode?: NewsMode
+  sources?: NewsSourceSettings
 }
 
 function decodeEntities(s: string): string {
@@ -28,11 +29,32 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, '&')
 }
 
+function stripTags(s: string): string {
+  return decodeEntities(s.replace(/<[^>]*>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function attrText(block: string, attr: string): string {
+  const m = block.match(new RegExp(`${attr}=["']([^"']+)["']`, 'i'))
+  return m ? decodeEntities(m[1].trim()) : ''
+}
+
 function tagText(block: string, tag: string): string {
   const m = block.match(
     new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`)
   )
   return m ? decodeEntities(m[1].trim()) : ''
+}
+
+function resolveUrl(url: string): string {
+  const trimmed = url.trim()
+  if (!trimmed) return ''
+  try {
+    return new URL(trimmed).toString()
+  } catch {
+    return ''
+  }
 }
 
 function googleSearchQuery(topic: string, mode: NewsMode): string {
@@ -78,6 +100,41 @@ async function fetchGoogleNews(topic: string, mode: NewsMode): Promise<NewsItem[
         publishedAt: Number.isFinite(parsed) ? parsed : null,
         topic: q,
       })
+    }
+    return items
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function fetchNaverNews(topic: string): Promise<NewsItem[]> {
+  const q = topic.trim()
+  if (!q) return []
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const url = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(q)}&sort=1`
+    const res = await fetch(url, {
+      headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml' },
+      signal: ctrl.signal,
+    })
+    if (!res.ok) return []
+    const html = await res.text()
+    const items: NewsItem[] = []
+    const seen = new Set<string>()
+    const re =
+      /<a\b(?=[^>]*data-heatmap-target=["']\.tit["'])[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(html)) !== null && items.length < SOURCE_LIMIT) {
+      const link = resolveUrl(m[1])
+      const title = stripTags(m[2])
+      if (!link || !title) continue
+      const key = normalizeStoryUrl(link)
+      if (seen.has(key)) continue
+      seen.add(key)
+      items.push({ title, link, source: 'Naver News', publishedAt: null, topic: q })
     }
     return items
   } catch {
@@ -170,6 +227,71 @@ async function fetchHackerNews(topic: string): Promise<NewsItem[]> {
   }
 }
 
+function sourceUrl(template: string, topic: string): string {
+  const raw = template.includes('{query}')
+    ? template.replace(/\{query\}/g, encodeURIComponent(topic))
+    : template
+  return resolveUrl(raw)
+}
+
+function parseFeed(xml: string, sourceName: string, topic: string): NewsItem[] {
+  const items: NewsItem[] = []
+  const seen = new Set<string>()
+  const push = (title: string, link: string, publishedText: string) => {
+    const cleanTitle = stripTags(title)
+    const cleanLink = resolveUrl(stripTags(link))
+    if (!cleanTitle || !cleanLink) return
+    const key = normalizeStoryUrl(cleanLink)
+    if (seen.has(key)) return
+    seen.add(key)
+    const parsed = publishedText ? Date.parse(stripTags(publishedText)) : NaN
+    items.push({
+      title: cleanTitle,
+      link: cleanLink,
+      source: sourceName,
+      publishedAt: Number.isFinite(parsed) ? parsed : null,
+      topic,
+    })
+  }
+
+  const itemRe = /<item\b[^>]*>([\s\S]*?)<\/item>/g
+  let m: RegExpExecArray | null
+  while ((m = itemRe.exec(xml)) !== null && items.length < SOURCE_LIMIT) {
+    const block = m[1]
+    push(tagText(block, 'title'), tagText(block, 'link'), tagText(block, 'pubDate') || tagText(block, 'dc:date'))
+  }
+
+  const entryRe = /<entry\b[^>]*>([\s\S]*?)<\/entry>/g
+  while ((m = entryRe.exec(xml)) !== null && items.length < SOURCE_LIMIT) {
+    const block = m[1]
+    const linkTag = block.match(/<link\b[^>]*>/i)?.[0] ?? ''
+    push(tagText(block, 'title'), attrText(linkTag, 'href') || tagText(block, 'link'), tagText(block, 'updated') || tagText(block, 'published'))
+  }
+  return items
+}
+
+async function fetchCustomSource(source: NewsSourceSettings['custom'][number], topic: string): Promise<NewsItem[]> {
+  if (!source.enabled) return []
+  const url = sourceUrl(source.url, topic)
+  if (!url) return []
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: ctrl.signal })
+    if (!res.ok) return []
+    const xml = await res.text()
+    return parseFeed(xml, source.name, topic)
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function defaultSources(): NewsSourceSettings {
+  return { google: true, hackerNews: true, naver: false, custom: [] }
+}
+
 function mergeNews(sources: NewsItem[][]): NewsItem[] {
   const out: NewsItem[] = []
   const seenUrls = new Set<string>()
@@ -190,10 +312,12 @@ function mergeNews(sources: NewsItem[][]): NewsItem[] {
 export async function fetchTopicNews(input: string | NewsFetchInput): Promise<NewsItem[]> {
   const q = (typeof input === 'string' ? input : input.query).trim()
   const mode: NewsMode = typeof input === 'string' || input.mode !== 'blogs' ? 'news' : 'blogs'
+  const sources = typeof input === 'string' ? defaultSources() : input.sources ?? defaultSources()
   if (!q) return []
-  const [google, hackerNews] = await Promise.all([
-    fetchGoogleNews(q, mode),
-    shouldSearchHackerNews(q, mode) ? fetchHackerNews(q) : Promise.resolve([]),
-  ])
-  return mergeNews([google, hackerNews])
+  const jobs: Promise<NewsItem[]>[] = []
+  if (sources.google) jobs.push(fetchGoogleNews(q, mode))
+  if (sources.hackerNews && shouldSearchHackerNews(q, mode)) jobs.push(fetchHackerNews(q))
+  if (sources.naver) jobs.push(fetchNaverNews(q))
+  for (const source of sources.custom.filter((s) => s.enabled)) jobs.push(fetchCustomSource(source, q))
+  return mergeNews(await Promise.all(jobs))
 }

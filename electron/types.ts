@@ -46,11 +46,26 @@ export interface AutoDraftSettings {
   maxPerRun: number
 }
 
+export interface CustomNewsSource {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+}
+
+export interface NewsSourceSettings {
+  google: boolean
+  hackerNews: boolean
+  naver: boolean
+  custom: CustomNewsSource[]
+}
+
 export interface AppSettings {
   theme: ThemeMode
   language: LanguageCode
   onboarded: boolean
   topics: string[]
+  newsSources: NewsSourceSettings
   llm: LlmSettings
   threads: ThreadsSettings
   style: StyleSettings

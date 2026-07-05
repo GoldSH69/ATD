@@ -65,7 +65,7 @@ export default function NewsView() {
     let stale = false
     setLoading(true)
     window.api
-      .newsFetch({ query: topic, mode })
+      .newsFetch({ query: topic, mode, sources: settings?.newsSources })
       .then((news) => {
         if (!stale) setItems(news)
       })

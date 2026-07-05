@@ -39,11 +39,26 @@ export interface AutoDraftSettings {
   maxPerRun: number
 }
 
+export interface CustomNewsSource {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+}
+
+export interface NewsSourceSettings {
+  google: boolean
+  hackerNews: boolean
+  naver: boolean
+  custom: CustomNewsSource[]
+}
+
 export interface AppSettings {
   theme: ThemeMode
   language: LanguageCode
   onboarded: boolean
   topics: string[]
+  newsSources: NewsSourceSettings
   llm: LlmSettings
   threads: ThreadsSettings
   style: StyleSettings
@@ -131,7 +146,7 @@ export interface BridgeApi {
   threadsOAuthStart(cfg: Pick<ThreadsSettings, 'appId' | 'appSecret' | 'redirectUri' | 'scopes'>): Promise<ThreadsOAuthResult>
   threadsTest(cfg: { accessToken: string; userId: string }): Promise<TestResult & { username?: string; userId?: string }>
   threadsScrapeStyle(count: number): Promise<{ ok: boolean; samples: string[]; message: string }>
-  newsFetch(input: string | { query: string; mode?: 'news' | 'blogs' }): Promise<NewsItem[]>
+  newsFetch(input: string | { query: string; mode?: 'news' | 'blogs'; sources?: NewsSourceSettings }): Promise<NewsItem[]>
   generatePost(input: {
     topic: string
     newsTitle?: string

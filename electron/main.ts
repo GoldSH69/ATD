@@ -122,9 +122,10 @@ app.whenReady().then(() => {
       return fetchTopicNews({
         query: String(value.query ?? '').trim(),
         mode: value.mode === 'blogs' ? 'blogs' : 'news',
+        sources: getSettings().newsSources,
       })
     }
-    return fetchTopicNews(String(input ?? '').trim())
+    return fetchTopicNews({ query: String(input ?? '').trim(), sources: getSettings().newsSources })
   })
   ipcMain.handle('images:keywords', (_e, input: Parameters<typeof generateImageKeywords>[0]) =>
     generateImageKeywords(input)

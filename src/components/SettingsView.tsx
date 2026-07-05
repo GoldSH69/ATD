@@ -4,9 +4,11 @@ import ThreadsTokenHelp from './ThreadsTokenHelp'
 import type {
   AppSettings,
   AutoDraftSettings,
+  CustomNewsSource,
   LanguageCode,
   LlmProviderKind,
   LlmSettings,
+  NewsSourceSettings,
   TestResult,
   ThemeMode,
   ThreadsSettings,
@@ -58,6 +60,8 @@ export default function SettingsView() {
   const [pendingView, setPendingView] = useState<ViewId | null>(null)
   const [showTokenHelp, setShowTokenHelp] = useState(false)
   const [topicInput, setTopicInput] = useState('')
+  const [customSourceName, setCustomSourceName] = useState('')
+  const [customSourceUrl, setCustomSourceUrl] = useState('')
   const [sampleInput, setSampleInput] = useState('')
 
   // follow external settings changes only while the form has no local edits
@@ -82,6 +86,9 @@ export default function SettingsView() {
 
   const setAuto = (patch: Partial<AutoDraftSettings>) =>
     edit((f) => ({ ...f, autoDraft: { ...f.autoDraft, ...patch } }))
+
+  const setNewsSources = (fn: (sources: NewsSourceSettings) => NewsSourceSettings) =>
+    edit((f) => ({ ...f, newsSources: fn(f.newsSources) }))
 
   useEffect(() => {
     if (!dirty) return
@@ -247,6 +254,36 @@ export default function SettingsView() {
 
   const removeTopic = (topic: string) =>
     edit((f) => ({ ...f, topics: f.topics.filter((t) => t !== topic) }))
+
+  const toggleBuiltInSource = (key: 'google' | 'hackerNews' | 'naver', enabled: boolean) =>
+    setNewsSources((sources) => ({ ...sources, [key]: enabled }))
+
+  const addCustomSource = () => {
+    const name = customSourceName.trim()
+    const url = customSourceUrl.trim()
+    if (!url) return
+    const source: CustomNewsSource = {
+      id: crypto.randomUUID(),
+      name: name || 'Custom RSS',
+      url,
+      enabled: true,
+    }
+    setNewsSources((sources) => ({ ...sources, custom: [...sources.custom, source] }))
+    setCustomSourceName('')
+    setCustomSourceUrl('')
+  }
+
+  const updateCustomSource = (id: string, patch: Partial<CustomNewsSource>) =>
+    setNewsSources((sources) => ({
+      ...sources,
+      custom: sources.custom.map((source) => (source.id === id ? { ...source, ...patch } : source)),
+    }))
+
+  const removeCustomSource = (id: string) =>
+    setNewsSources((sources) => ({
+      ...sources,
+      custom: sources.custom.filter((source) => source.id !== id),
+    }))
 
   const addSample = () => {
     const s = sampleInput.trim()
@@ -617,6 +654,105 @@ export default function SettingsView() {
               />
               <button className="btn" onClick={addTopic}>
                 Add
+              </button>
+            </div>
+          </div>
+
+          <div className="section">
+            <div className="section-title">News sources</div>
+            <div className="section-desc">
+              Choose which media sources AutoThreads scrapes for News and auto-drafts.
+            </div>
+            <div className="source-list">
+              <label className="toggle source-toggle">
+                <input
+                  type="checkbox"
+                  checked={form.newsSources.google}
+                  onChange={(e) => toggleBuiltInSource('google', e.target.checked)}
+                />
+                <span>
+                  <strong>Google News RSS</strong>
+                  <span className="hint">General news and blog-mode searches.</span>
+                </span>
+              </label>
+              <label className="toggle source-toggle">
+                <input
+                  type="checkbox"
+                  checked={form.newsSources.hackerNews}
+                  onChange={(e) => toggleBuiltInSource('hackerNews', e.target.checked)}
+                />
+                <span>
+                  <strong>Hacker News</strong>
+                  <span className="hint">Selective tech/startup/developer results.</span>
+                </span>
+              </label>
+              <label className="toggle source-toggle">
+                <input
+                  type="checkbox"
+                  checked={form.newsSources.naver}
+                  onChange={(e) => toggleBuiltInSource('naver', e.target.checked)}
+                />
+                <span>
+                  <strong>Naver News</strong>
+                  <span className="hint">Korean media search results from Naver News.</span>
+                </span>
+              </label>
+            </div>
+            <div className="field">
+              <span className="field-label">Custom RSS / Atom feeds</span>
+              <div className="custom-source-list">
+                {form.newsSources.custom.map((source) => (
+                  <div key={source.id} className="custom-source-row">
+                    <label className="toggle">
+                      <input
+                        type="checkbox"
+                        checked={source.enabled}
+                        onChange={(e) => updateCustomSource(source.id, { enabled: e.target.checked })}
+                      />
+                    </label>
+                    <input
+                      className="input"
+                      value={source.name}
+                      onChange={(e) => updateCustomSource(source.id, { name: e.target.value })}
+                      placeholder="Source name"
+                    />
+                    <input
+                      className="input grow"
+                      value={source.url}
+                      onChange={(e) => updateCustomSource(source.id, { url: e.target.value })}
+                      placeholder="https://example.com/rss.xml or ...?q={query}"
+                    />
+                    <button className="btn ghost small" onClick={() => removeCustomSource(source.id)}>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                {form.newsSources.custom.length === 0 && (
+                  <span className="hint">No custom feeds yet. Use {"{query}"} in a URL for query-aware RSS feeds.</span>
+                )}
+              </div>
+            </div>
+            <div className="row">
+              <input
+                className="input"
+                placeholder="Name"
+                value={customSourceName}
+                onChange={(e) => setCustomSourceName(e.target.value)}
+              />
+              <input
+                className="input grow"
+                placeholder="RSS/Atom URL, optional {query}"
+                value={customSourceUrl}
+                onChange={(e) => setCustomSourceUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addCustomSource()
+                  }
+                }}
+              />
+              <button className="btn" onClick={addCustomSource}>
+                Add source
               </button>
             </div>
           </div>

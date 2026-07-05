@@ -18,6 +18,7 @@ export function defaultSettings(): AppSettings {
     language: 'en',
     onboarded: false,
     topics: ['artificial intelligence', 'technology', 'startups'],
+    newsSources: { google: true, hackerNews: true, naver: false, custom: [] },
     llm: {
       provider: 'local',
       claude: { apiKey: '', model: 'claude-sonnet-5' },
@@ -86,6 +87,26 @@ const language = (v: unknown): AppSettings['language'] =>
     : 'en'
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+const bool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback)
+
+function customNewsSources(v: unknown): AppSettings['newsSources']['custom'] {
+  if (!Array.isArray(v)) return []
+  return v
+    .map((item, i) => {
+      if (!item || typeof item !== 'object') return null
+      const row = item as { id?: unknown; name?: unknown; url?: unknown; enabled?: unknown }
+      const url = str(row.url, '').trim()
+      if (!url) return null
+      const name = str(row.name, '').trim() || `Custom ${i + 1}`
+      return {
+        id: str(row.id, '').trim() || `custom-${i + 1}`,
+        name,
+        url,
+        enabled: bool(row.enabled, true),
+      }
+    })
+    .filter((x): x is AppSettings['newsSources']['custom'][number] => x !== null)
+}
 
 /** Merge stored (possibly older-shaped) settings over defaults, field by field. */
 function normalize(raw: Partial<AppSettings> | null): AppSettings {
@@ -99,6 +120,12 @@ function normalize(raw: Partial<AppSettings> | null): AppSettings {
     language: language(raw.language),
     onboarded: raw.onboarded === true,
     topics: Array.isArray(raw.topics) ? topics : d.topics,
+    newsSources: {
+      google: bool(raw.newsSources?.google, d.newsSources.google),
+      hackerNews: bool(raw.newsSources?.hackerNews, d.newsSources.hackerNews),
+      naver: bool(raw.newsSources?.naver, d.newsSources.naver),
+      custom: customNewsSources(raw.newsSources?.custom),
+    },
     llm: {
       provider:
         raw.llm?.provider === 'claude' ||
