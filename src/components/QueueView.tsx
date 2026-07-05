@@ -60,7 +60,7 @@ export default function QueueView() {
         <span className="view-title">{text.queue}</span>
         <span className="view-sub">{text.scheduledPublished}</span>
       </div>
-      <div className="view-body no-pad">
+      <div className="view-body no-pad stack-list">
         {items.length === 0 ? (
           <div className="empty">{text.nothingQueued}</div>
         ) : (

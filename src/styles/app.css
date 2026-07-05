@@ -238,6 +238,11 @@ body {
   overflow: hidden;
 }
 
+.view-body.stack-list {
+  display: block;
+  overflow-y: auto;
+}
+
 /* two-pane master/detail (list + editor) */
 .split {
   flex: 1;

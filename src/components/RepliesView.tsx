@@ -98,7 +98,7 @@ export default function RepliesView() {
           </button>
         </div>
       </div>
-      <div className="view-body no-pad">
+      <div className="view-body no-pad stack-list">
         {loading ? (
           <div className="empty">{text.checkingThreads}</div>
         ) : error ? (
