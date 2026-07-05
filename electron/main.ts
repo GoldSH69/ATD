@@ -116,7 +116,16 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('news:fetch', (_e, topic: string) => fetchTopicNews(String(topic ?? '').trim()))
+  ipcMain.handle('news:fetch', (_e, input: unknown) => {
+    if (typeof input === 'object' && input !== null) {
+      const value = input as { query?: unknown; mode?: unknown }
+      return fetchTopicNews({
+        query: String(value.query ?? '').trim(),
+        mode: value.mode === 'blogs' ? 'blogs' : 'news',
+      })
+    }
+    return fetchTopicNews(String(input ?? '').trim())
+  })
   ipcMain.handle('images:keywords', (_e, input: Parameters<typeof generateImageKeywords>[0]) =>
     generateImageKeywords(input)
   )

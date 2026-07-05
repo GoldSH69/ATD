@@ -4,6 +4,34 @@ import { shellText } from '../i18n'
 import { timeAgo } from '../util/format'
 import type { Draft, NewsItem } from '../types'
 
+type NewsMode = 'news' | 'blogs'
+
+interface NewsOption {
+  id: string
+  label: string
+  query: string
+  group: 'custom' | 'category'
+}
+
+const CATEGORY_OPTIONS: NewsOption[] = [
+  { id: 'cat-ai', label: 'AI', query: 'artificial intelligence', group: 'category' },
+  { id: 'cat-technology', label: 'Technology', query: 'technology', group: 'category' },
+  { id: 'cat-startups', label: 'Startups', query: 'startups', group: 'category' },
+  { id: 'cat-science', label: 'Science', query: 'science', group: 'category' },
+  { id: 'cat-fashion', label: 'Fashion', query: 'fashion', group: 'category' },
+  { id: 'cat-lifestyle', label: 'Lifestyle', query: 'lifestyle', group: 'category' },
+  { id: 'cat-health', label: 'Health', query: 'health wellness', group: 'category' },
+  { id: 'cat-finance', label: 'Finance', query: 'finance markets', group: 'category' },
+  { id: 'cat-business', label: 'Business', query: 'business', group: 'category' },
+  { id: 'cat-travel', label: 'Travel', query: 'travel', group: 'category' },
+  { id: 'cat-food', label: 'Food', query: 'food restaurants', group: 'category' },
+  { id: 'cat-beauty', label: 'Beauty', query: 'beauty skincare', group: 'category' },
+  { id: 'cat-design', label: 'Design', query: 'design', group: 'category' },
+  { id: 'cat-gaming', label: 'Gaming', query: 'gaming', group: 'category' },
+  { id: 'cat-entertainment', label: 'Entertainment', query: 'entertainment', group: 'category' },
+  { id: 'cat-sports', label: 'Sports', query: 'sports', group: 'category' },
+]
+
 export default function NewsView() {
   const settings = useApp((s) => s.settings)
   const setView = useApp((s) => s.setView)
@@ -13,9 +41,19 @@ export default function NewsView() {
   const text = shellText(settings?.language)
 
   const topics = settings?.topics ?? []
-  const [picked, setPicked] = useState<string | null>(null)
-  // fall back to the first topic when nothing picked or the pick was removed in settings
-  const topic = picked && topics.includes(picked) ? picked : topics[0] ?? null
+  const customOptions: NewsOption[] = topics.map((t) => ({
+    id: `custom-${t.toLowerCase()}`,
+    label: t,
+    query: t,
+    group: 'custom',
+  }))
+  const allOptions = [...customOptions, ...CATEGORY_OPTIONS]
+  const [pickedId, setPickedId] = useState<string | null>(null)
+  const [mode, setMode] = useState<NewsMode>('news')
+  // fall back to the first saved topic; otherwise use the first curated category.
+  const pickedOption = allOptions.find((opt) => opt.id === pickedId) ?? allOptions[0] ?? null
+  const topic = pickedOption?.query ?? null
+  const topicLabel = pickedOption?.label ?? null
 
   const [items, setItems] = useState<NewsItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -27,7 +65,7 @@ export default function NewsView() {
     let stale = false
     setLoading(true)
     window.api
-      .newsFetch(topic)
+      .newsFetch({ query: topic, mode })
       .then((news) => {
         if (!stale) setItems(news)
       })
@@ -42,14 +80,14 @@ export default function NewsView() {
     return () => {
       stale = true
     }
-  }, [topic, refreshKey, toast])
+  }, [mode, topic, refreshKey, toast])
 
   const generateDraft = async (item: NewsItem) => {
-    if (!topic || generatingLink) return
+    if (!topicLabel || generatingLink) return
     setGeneratingLink(item.link)
     try {
       const res = await window.api.generatePost({
-        topic,
+        topic: topicLabel,
         newsTitle: item.title,
         newsSource: item.source,
         newsUrl: item.link,
@@ -63,7 +101,7 @@ export default function NewsView() {
         id: crypto.randomUUID(),
         kind: 'post',
         text: res.text,
-        topic,
+        topic: topicLabel,
         sourceTitle: item.title,
         sourceUrl: item.link,
         status: 'draft',
@@ -80,7 +118,7 @@ export default function NewsView() {
     }
   }
 
-  if (topics.length === 0) {
+  if (allOptions.length === 0) {
     return (
       <div className="view">
         <div className="view-header">
@@ -102,17 +140,46 @@ export default function NewsView() {
     <div className="view">
       <div className="view-header">
         <div className="view-title">{text.news}</div>
-        <div className="view-sub">Google News + Hacker News · {topic}</div>
-        <div className="row">
-          {topics.map((t) => (
-            <button
-              key={t}
-              className={`chip selectable${t === topic ? ' on' : ''}`}
-              onClick={() => setPicked(t)}
-            >
-              {t}
-            </button>
-          ))}
+        <div className="view-sub">
+          {mode === 'blogs' ? 'Google News RSS blog search' : 'Google News RSS + selective Hacker News'} · {topicLabel}
+        </div>
+        <div className="seg">
+          <button className={mode === 'news' ? 'on' : ''} onClick={() => setMode('news')}>
+            News
+          </button>
+          <button className={mode === 'blogs' ? 'on' : ''} onClick={() => setMode('blogs')}>
+            Blogs
+          </button>
+        </div>
+        {customOptions.length > 0 && (
+          <div className="topic-group">
+            <span className="topic-group-label">My topics</span>
+            <div className="row">
+              {customOptions.map((option) => (
+                <button
+                  key={option.id}
+                  className={`chip selectable${option.id === pickedOption?.id ? ' on' : ''}`}
+                  onClick={() => setPickedId(option.id)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="topic-group">
+          <span className="topic-group-label">Categories</span>
+          <div className="row">
+            {CATEGORY_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                className={`chip selectable${option.id === pickedOption?.id ? ' on' : ''}`}
+                onClick={() => setPickedId(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="view-actions">
           <button className="btn" onClick={() => setRefreshKey((k) => k + 1)} disabled={loading}>

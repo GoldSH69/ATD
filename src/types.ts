@@ -131,7 +131,7 @@ export interface BridgeApi {
   threadsOAuthStart(cfg: Pick<ThreadsSettings, 'appId' | 'appSecret' | 'redirectUri' | 'scopes'>): Promise<ThreadsOAuthResult>
   threadsTest(cfg: { accessToken: string; userId: string }): Promise<TestResult & { username?: string; userId?: string }>
   threadsScrapeStyle(count: number): Promise<{ ok: boolean; samples: string[]; message: string }>
-  newsFetch(topic: string): Promise<NewsItem[]>
+  newsFetch(input: string | { query: string; mode?: 'news' | 'blogs' }): Promise<NewsItem[]>
   generatePost(input: {
     topic: string
     newsTitle?: string

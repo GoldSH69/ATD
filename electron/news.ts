@@ -11,6 +11,13 @@ const UA =
 const MAX_ITEMS = 30
 const SOURCE_LIMIT = 15
 
+export type NewsMode = 'news' | 'blogs'
+
+export interface NewsFetchInput {
+  query: string
+  mode?: NewsMode
+}
+
 function decodeEntities(s: string): string {
   // &amp; is decoded LAST so nested entities (e.g. "&amp;lt;") resolve correctly.
   return s
@@ -28,13 +35,19 @@ function tagText(block: string, tag: string): string {
   return m ? decodeEntities(m[1].trim()) : ''
 }
 
-async function fetchGoogleNews(topic: string): Promise<NewsItem[]> {
+function googleSearchQuery(topic: string, mode: NewsMode): string {
+  if (mode === 'blogs') return `${topic} blog OR newsletter OR magazine OR analysis`
+  return topic
+}
+
+async function fetchGoogleNews(topic: string, mode: NewsMode): Promise<NewsItem[]> {
   const q = topic.trim()
   if (!q) return []
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 8000)
   try {
-    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`
+    const search = googleSearchQuery(q, mode)
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(search)}&hl=en-US&gl=US&ceid=US:en`
     const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: ctrl.signal })
     if (!res.ok) return []
     // Body is consumed inside the same timeout window so a stalled stream cannot hang.
@@ -87,6 +100,25 @@ function normalizeStoryUrl(url: string): string {
 
 function titleKey(title: string): string {
   return title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function shouldSearchHackerNews(topic: string, mode: NewsMode): boolean {
+  if (mode !== 'news') return false
+  const q = topic.toLowerCase()
+  return [
+    'ai',
+    'artificial intelligence',
+    'developer',
+    'engineering',
+    'hacker',
+    'local llm',
+    'machine learning',
+    'open source',
+    'programming',
+    'software',
+    'startup',
+    'technology',
+  ].some((term) => q.includes(term))
 }
 
 interface HackerNewsHit {
@@ -155,9 +187,13 @@ function mergeNews(sources: NewsItem[][]): NewsItem[] {
     .slice(0, MAX_ITEMS)
 }
 
-export async function fetchTopicNews(topic: string): Promise<NewsItem[]> {
-  const q = topic.trim()
+export async function fetchTopicNews(input: string | NewsFetchInput): Promise<NewsItem[]> {
+  const q = (typeof input === 'string' ? input : input.query).trim()
+  const mode: NewsMode = typeof input === 'string' || input.mode !== 'blogs' ? 'news' : 'blogs'
   if (!q) return []
-  const [google, hackerNews] = await Promise.all([fetchGoogleNews(q), fetchHackerNews(q)])
+  const [google, hackerNews] = await Promise.all([
+    fetchGoogleNews(q, mode),
+    shouldSearchHackerNews(q, mode) ? fetchHackerNews(q) : Promise.resolve([]),
+  ])
   return mergeNews([google, hackerNews])
 }

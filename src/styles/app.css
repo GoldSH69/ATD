@@ -326,6 +326,22 @@ body {
   overflow: auto;
 }
 
+.topic-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topic-group-label {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .news-table-head,
 .news-row {
   display: grid;
