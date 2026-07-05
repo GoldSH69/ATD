@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/autothreads-hero.png" alt="AutoThreads hero banner" width="100%" />
+<img src="src/assets/banner.png" alt="AutoThreads hero banner" width="100%" />
 
 # AutoThreads
 
