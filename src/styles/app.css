@@ -1272,6 +1272,24 @@ body {
   grid-column: span 1;
 }
 
+.reply-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.badge-mention {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+  color: var(--text);
+}
+
+.list-item.is-mention {
+  border-left: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
 .ap-warn {
   display: flex;
   align-items: center;

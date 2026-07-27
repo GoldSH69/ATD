@@ -354,43 +354,93 @@ async function fetchUnansweredPostReplies(cfg: ThreadsCfg): Promise<UnansweredRe
   return out
 }
 
+interface RawMention {
+  id?: string
+  text?: string
+  username?: string
+  timestamp?: string
+  permalink?: string
+  shortcode?: string
+  is_reply?: boolean
+  owner?: { id?: string; username?: string }
+}
+
+export type MentionsFetchResult = {
+  items: UnansweredReply[]
+  /** Set when the Mentions API call failed (e.g. missing threads_manage_mentions). */
+  error?: string
+}
+
 /**
  * Public posts where another profile @mentioned you (Threads Mentions API).
- * Requires `threads_manage_mentions` on the access token. Returns [] if the
- * permission is missing or the call fails (so reply-only mode still works).
+ * Always queries `/me/mentions` (more reliable than a stored user id).
+ * Requires `threads_manage_mentions` on the access token.
  */
-export async function fetchUnansweredMentions(cfg: ThreadsCfg): Promise<UnansweredReply[]> {
+export async function fetchUnansweredMentions(cfg: ThreadsCfg): Promise<MentionsFetchResult> {
   const me = await apiGet<{ id?: string; username?: string }>(cfg, '/me', { fields: 'id,username' })
-  const myUsername = typeof me.username === 'string' ? me.username : ''
-  const u = uid(cfg)
-  let data: { data?: Array<Partial<RawReply> & { permalink?: string }> }
+  const myUsername = (typeof me.username === 'string' ? me.username : '').toLowerCase()
+
+  // Recent window — Meta requires since >= 1688540400.
+  const since = Math.max(1688540400, Math.floor(Date.now() / 1000) - 14 * 24 * 3600)
+  const fields =
+    'id,text,username,timestamp,permalink,shortcode,media_type,is_reply,owner{id,username}'
+
+  let data: { data?: RawMention[] }
   try {
-    data = await apiGet(cfg, `/${u}/mentions`, {
-      fields: 'id,text,username,timestamp,permalink,is_reply,replied_to',
-      limit: '25',
+    // Prefer `me` — wrong numeric User ID in settings previously returned empty/errors.
+    data = await apiGet(cfg, '/me/mentions', {
+      fields,
+      limit: '50',
+      since: String(since),
     })
   } catch (err) {
-    // Common when the token was minted without threads_manage_mentions.
-    console.warn(
-      '[threads] mentions fetch failed (need threads_manage_mentions on the token?):',
-      err instanceof Error ? err.message : err
-    )
-    return []
+    const message = errText(err)
+    console.warn('[threads] /me/mentions failed:', message)
+    // Fallback without since (some tokens reject the param).
+    try {
+      data = await apiGet(cfg, '/me/mentions', { fields, limit: '50' })
+    } catch (err2) {
+      const msg = errText(err2)
+      console.warn('[threads] mentions fetch failed (need threads_manage_mentions?):', msg)
+      return {
+        items: [],
+        error:
+          `Mentions API failed: ${msg}. ` +
+          'Regenerate your Threads token with the threads_manage_mentions permission.',
+      }
+    }
   }
+
+  const raw = data.data ?? []
+  console.info(`[threads] mentions API returned ${raw.length} media object(s)`)
 
   const out: UnansweredReply[] = []
   let probeBudget = ANSWER_PROBE_BUDGET
-  for (const m of data.data ?? []) {
+  for (const m of raw) {
     if (typeof m.id !== 'string' || !m.id) continue
-    const username = typeof m.username === 'string' ? m.username : ''
-    if (!username || username === myUsername) continue
-    const text = typeof m.text === 'string' ? m.text : ''
-    if (!text.trim()) continue
-    // Skip mentions we already answered under.
-    if (probeBudget > 0) {
+
+    // username is not always present on mention media — fall back to owner.username.
+    let username =
+      typeof m.username === 'string' && m.username.trim()
+        ? m.username.trim()
+        : typeof m.owner?.username === 'string' && m.owner.username.trim()
+          ? m.owner.username.trim()
+          : ''
+    if (!username) username = 'someone'
+    if (myUsername && username.toLowerCase() === myUsername) continue
+
+    // Media-only mentions may have empty text — still replyable.
+    const text =
+      typeof m.text === 'string' && m.text.trim()
+        ? m.text.trim()
+        : '(mentioned you in a post)'
+
+    // Skip mentions we already answered under (best-effort).
+    if (probeBudget > 0 && myUsername) {
       probeBudget--
       if (await isAnsweredByMe(cfg, m.id, myUsername)) continue
     }
+
     out.push({
       id: m.id,
       text,
@@ -402,31 +452,46 @@ export async function fetchUnansweredMentions(cfg: ThreadsCfg): Promise<Unanswer
       kind: 'mention',
     })
   }
-  return out
+  return { items: out }
 }
 
 /**
  * Unanswered engagement: replies on your posts + (optional) @mentions of you.
- * Mentions require `threads_manage_mentions`; failures degrade to replies only.
+ * Mentions require `threads_manage_mentions`; failures degrade to replies only
+ * and surface `mentionError` for the UI/activity log.
  */
 export async function fetchUnansweredReplies(
   cfg: ThreadsCfg,
   opts?: { includeMentions?: boolean }
 ): Promise<UnansweredReply[]> {
+  const result = await fetchUnansweredEngagement(cfg, opts)
+  return result.replies
+}
+
+export async function fetchUnansweredEngagement(
+  cfg: ThreadsCfg,
+  opts?: { includeMentions?: boolean }
+): Promise<{ replies: UnansweredReply[]; mentionError?: string }> {
   const includeMentions = opts?.includeMentions !== false
   const replies = await fetchUnansweredPostReplies(cfg)
-  const mentions = includeMentions ? await fetchUnansweredMentions(cfg) : []
+  let mentions: UnansweredReply[] = []
+  let mentionError: string | undefined
+  if (includeMentions) {
+    const m = await fetchUnansweredMentions(cfg)
+    mentions = m.items
+    mentionError = m.error
+  }
   const seen = new Set(replies.map((r) => r.id))
   const out = [...replies]
-  for (const m of mentions) {
-    if (seen.has(m.id)) continue
-    seen.add(m.id)
-    out.push(m)
+  for (const item of mentions) {
+    if (seen.has(item.id)) continue
+    seen.add(item.id)
+    out.push(item)
   }
   const ts = (s: string): number => {
     const t = Date.parse(s)
     return Number.isNaN(t) ? 0 : t
   }
   out.sort((a, b) => ts(b.timestamp) - ts(a.timestamp))
-  return out.slice(0, 50)
+  return { replies: out.slice(0, 50), mentionError }
 }

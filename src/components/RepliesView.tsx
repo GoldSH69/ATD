@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useApp } from '../store/appStore'
 import { shellText } from '../i18n'
 import type { Draft, UnansweredReply } from '../types'
 import { snippet, timeAgo } from '../util/format'
+
+type Filter = 'all' | 'replies' | 'mentions'
 
 export default function RepliesView() {
   const drafts = useApp((s) => s.drafts)
@@ -12,19 +14,25 @@ export default function RepliesView() {
   const upsertDraft = useApp((s) => s.upsertDraft)
   const toast = useApp((s) => s.toast)
   const text = shellText(settings?.language)
+  const ko = settings?.language === 'ko'
+  const t = (en: string, kr: string) => (ko ? kr : en)
 
   const [replies, setReplies] = useState<UnansweredReply[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [mentionWarning, setMentionWarning] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<Filter>('all')
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setMentionWarning(null)
     try {
       const res = await window.api.unansweredReplies()
       if (res.ok) {
         setReplies(res.replies)
+        if (res.mentionError) setMentionWarning(res.mentionError)
       } else {
         setReplies(null)
         setError(res.message)
@@ -40,6 +48,19 @@ export default function RepliesView() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const counts = useMemo(() => {
+    const list = replies ?? []
+    const mentions = list.filter((r) => r.kind === 'mention').length
+    return { all: list.length, replies: list.length - mentions, mentions }
+  }, [replies])
+
+  const visible = useMemo(() => {
+    const list = replies ?? []
+    if (filter === 'mentions') return list.filter((r) => r.kind === 'mention')
+    if (filter === 'replies') return list.filter((r) => r.kind !== 'mention')
+    return list
+  }, [replies, filter])
 
   const draftFor = (r: UnansweredReply): Draft | undefined =>
     drafts.find((d) => d.kind === 'reply' && d.replyToId === r.id)
@@ -65,6 +86,7 @@ export default function RepliesView() {
         replyToId: r.id,
         replyToText: r.text,
         replyToUsername: r.username,
+        topic: r.kind === 'mention' ? 'mention' : undefined,
         status: 'draft',
         createdAt: now,
         updatedAt: now,
@@ -100,6 +122,34 @@ export default function RepliesView() {
         </div>
       </div>
       <div className="view-body no-pad stack-list">
+        <div className="reply-filters">
+          {(
+            [
+              { id: 'all' as const, label: t(`All (${counts.all})`, `전체 (${counts.all})`) },
+              { id: 'replies' as const, label: t(`Replies (${counts.replies})`, `답글 (${counts.replies})`) },
+              { id: 'mentions' as const, label: t(`@Mentions (${counts.mentions})`, `@멘션 (${counts.mentions})`) },
+            ] as const
+          ).map((f) => (
+            <button
+              key={f.id}
+              className={`chip selectable${filter === f.id ? ' on' : ''}`}
+              onClick={() => setFilter(f.id)}
+              type="button"
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {mentionWarning && (
+          <div className="ap-warn" style={{ margin: '0 14px 10px' }}>
+            <div>{mentionWarning}</div>
+            <button className="btn small" onClick={() => setView('settings')}>
+              {text.openSettings}
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <div className="empty">{text.checkingThreads}</div>
         ) : error ? (
@@ -113,21 +163,37 @@ export default function RepliesView() {
               </div>
             )}
           </div>
-        ) : !replies || replies.length === 0 ? (
-          <div className="empty">{text.allCaughtUp}</div>
+        ) : visible.length === 0 ? (
+          <div className="empty">
+            {filter === 'mentions'
+              ? t(
+                  'No @mentions right now. If you expect some, check that your token has threads_manage_mentions.',
+                  '지금 @멘션이 없습니다. 있어야 한다면 토큰에 threads_manage_mentions 권한이 있는지 확인하세요.'
+                )
+              : text.allCaughtUp}
+          </div>
         ) : (
-          replies.map((r) => {
+          visible.map((r) => {
             const existing = draftFor(r)
+            const isMention = r.kind === 'mention'
             return (
-              <div className="list-item" key={r.id}>
+              <div className={`list-item${isMention ? ' is-mention' : ''}`} key={r.id}>
                 <div className="item-title">
                   <span>@{r.username}</span>
-                  {r.kind === 'mention' && <span className="badge">mention</span>}
-                  <span className="item-meta">{timeAgo(Date.parse(r.timestamp))}</span>
+                  {isMention ? (
+                    <span className="badge badge-mention">@mention</span>
+                  ) : (
+                    <span className="badge">{t('reply', '답글')}</span>
+                  )}
+                  <span className="item-meta">
+                    {r.timestamp ? timeAgo(Date.parse(r.timestamp)) : ''}
+                  </span>
                 </div>
                 <div className="item-snippet">{r.text}</div>
                 <div className="item-meta">
-                  {r.kind === 'mention' ? 'mentioned you' : `on: ${snippet(r.rootPostText, 90)}`}
+                  {isMention
+                    ? t('mentioned you — reply will post under their thread', '나를 멘션함 — 상대 글에 답글로 게시')
+                    : `on: ${snippet(r.rootPostText, 90)}`}
                 </div>
                 <div className="item-meta">
                   {existing ? (
@@ -143,7 +209,11 @@ export default function RepliesView() {
                       disabled={busyId === r.id}
                       onClick={() => void generate(r)}
                     >
-                      {busyId === r.id ? text.generating : text.draftReply}
+                      {busyId === r.id
+                        ? text.generating
+                        : isMention
+                          ? t('Draft mention reply', '멘션 답글 초안')
+                          : text.draftReply}
                     </button>
                   )}
                 </div>

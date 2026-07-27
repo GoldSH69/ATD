@@ -1,7 +1,7 @@
 import { db } from './localdb'
 import { getSettings } from './settings'
 import { fetchTopicNews } from './news'
-import { fetchUnansweredReplies } from './threadsApi'
+import { fetchUnansweredEngagement } from './threadsApi'
 import { allDrafts, upsertDraft } from './drafts'
 import { postDraftNow } from './scheduler'
 import {
@@ -381,7 +381,13 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
   try {
     // Mentions need threads_manage_mentions on the token; failures degrade to replies-only.
     log('info', `Scanning replies${ap.replyToMentions ? ' + @mentions' : ''}…`)
-    replies = await fetchUnansweredReplies(settings.threads, { includeMentions: ap.replyToMentions })
+    const fetched = await fetchUnansweredEngagement(settings.threads, {
+      includeMentions: ap.replyToMentions,
+    })
+    if (fetched.mentionError) {
+      log('error', fetched.mentionError)
+    }
+    replies = fetched.replies
   } catch (err) {
     log('error', `Could not fetch replies/mentions: ${err instanceof Error ? err.message : String(err)}`)
     await scheduleRetry('reply')
@@ -394,6 +400,9 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
     if (kind === 'mention') return ap.replyToMentions
     return ap.replyToAll
   })
+  const mentionN = replies.filter((r) => r.kind === 'mention').length
+  const replyN = replies.length - mentionN
+  log('info', `Inbox: ${replyN} unanswered reply(ies), ${mentionN} @mention(s).`)
 
   const answered = new Set((db.get<string[]>(AP_ANSWERED) ?? []).filter((x) => typeof x === 'string'))
   // Only block targets we already successfully posted (or are posting right now).

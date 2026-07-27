@@ -9,6 +9,19 @@ Session-level notes also live under `_changelog/`.
 
 ---
 
+## [0.2.5] — 2026-07-27
+
+### Fixed
+
+- **@mentions actually load** — Mentions API now always uses `/me/mentions`, accepts media without a top-level `username` (falls back to `owner.username`), keeps media-only mentions, and surfaces permission errors instead of silently returning empty.
+- Full-Auto activity log reports mention API failures and inbox counts (replies vs @mentions).
+
+### Added
+
+- **Replies page** shows **@mentions** alongside post replies, with All / Replies / @Mentions filters and clearer mention badges.
+
+---
+
 ## [0.2.4] — 2026-07-27
 
 ### Fixed

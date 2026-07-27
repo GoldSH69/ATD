@@ -3,7 +3,7 @@ import * as path from 'path'
 import { getSettings, setSettings } from './settings'
 import { testLlm } from './llm'
 import { generatePostDraft, generateReplyDraft } from './pipeline'
-import { testThreads, scrapeRecentTexts, fetchUnansweredReplies } from './threadsApi'
+import { testThreads, scrapeRecentTexts, fetchUnansweredEngagement } from './threadsApi'
 import { startThreadsOAuth } from './threadsOAuth'
 import { fetchTopicNews } from './news'
 import { generateImageKeywords, searchImages } from './images'
@@ -140,10 +140,19 @@ app.whenReady().then(() => {
       return { ok: false, replies: [], message: 'Threads API is not configured — save credentials in Settings first.' }
     }
     try {
-      const replies = await fetchUnansweredReplies(threads)
-      return { ok: true, replies, message: '' }
+      // Always include @mentions for the Replies page + Full-Auto.
+      const { replies, mentionError } = await fetchUnansweredEngagement(threads, {
+        includeMentions: true,
+      })
+      const mentionCount = replies.filter((r) => r.kind === 'mention').length
+      const replyCount = replies.length - mentionCount
+      let message = ''
+      if (mentionError) message = mentionError
+      else if (replies.length === 0) message = ''
+      else message = `${replyCount} reply(ies), ${mentionCount} mention(s)`
+      return { ok: true, replies, message, mentionError: mentionError ?? null }
     } catch (err) {
-      return { ok: false, replies: [], message: errMsg(err) }
+      return { ok: false, replies: [], message: errMsg(err), mentionError: null }
     }
   })
 

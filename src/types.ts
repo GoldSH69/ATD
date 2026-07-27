@@ -221,7 +221,12 @@ export interface BridgeApi {
   }): Promise<GenerateResult>
   imageKeywords(input: { topic?: string; title?: string; text: string }): Promise<GenerateResult>
   imageSearch(query: string): Promise<{ ok: boolean; images: ImageCandidate[]; message: string }>
-  unansweredReplies(): Promise<{ ok: boolean; replies: UnansweredReply[]; message: string }>
+  unansweredReplies(): Promise<{
+    ok: boolean
+    replies: UnansweredReply[]
+    message: string
+    mentionError?: string | null
+  }>
   draftsAll(): Promise<Draft[]>
   draftUpsert(draft: Draft): Promise<Draft[]>
   draftDelete(id: string): Promise<Draft[]>
