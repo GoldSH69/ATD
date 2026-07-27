@@ -222,26 +222,20 @@ export default function AutopilotView() {
                 {status?.repliesToday ?? 0} / {status?.maxRepliesPerDay ?? form.maxRepliesPerDay}
               </span>
             </div>
-            <div className="ap-stat">
-              <span className="ap-stat-k">{t('Next post', '다음 게시 판단')}</span>
-              <span className="ap-stat-v">
-                {nextPostLabel()}
-                <span className="ap-stat-sub">
-                  {' '}
-                  · {status?.intervalMinutes ?? form.intervalMinutes}
-                  {t('m', '분')}
-                </span>
+            <div className="ap-stat ap-stat-wide">
+              <span className="ap-stat-k">{t('Post timer', '게시 타이머')}</span>
+              <span className="ap-stat-v">{nextPostLabel()}</span>
+              <span className="ap-stat-sub">
+                {t('every', '매')} {status?.intervalMinutes ?? form.intervalMinutes}
+                {t(' min', '분')}
               </span>
             </div>
-            <div className="ap-stat">
-              <span className="ap-stat-k">{t('Next reply check', '다음 답글 확인')}</span>
-              <span className="ap-stat-v">
-                {nextReplyLabel()}
-                <span className="ap-stat-sub">
-                  {' '}
-                  · {status?.replyIntervalMinutes ?? form.replyIntervalMinutes}
-                  {t('m', '분')}
-                </span>
+            <div className="ap-stat ap-stat-wide">
+              <span className="ap-stat-k">{t('Reply / mention timer', '답글·멘션 타이머')}</span>
+              <span className="ap-stat-v">{nextReplyLabel()}</span>
+              <span className="ap-stat-sub">
+                {t('every', '매')} {status?.replyIntervalMinutes ?? form.replyIntervalMinutes}
+                {t(' min', '분')} · {t('failures retry in 1 min', '실패 시 1분 후 재시도')}
               </span>
             </div>
             <div className="ap-stat">

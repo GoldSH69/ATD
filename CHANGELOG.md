@@ -9,6 +9,21 @@ Session-level notes also live under `_changelog/`.
 
 ---
 
+## [0.2.4] — 2026-07-27
+
+### Fixed
+
+- **Replies/mentions actually run on their own timer** — launch resets the reply stamp (not only the post stamp) and kicks an immediate scan; reply work no longer waits behind a long post/LLM pass.
+- **Failed replies no longer get stuck** — failed drafts no longer block future attempts; publish failures are retried (~1 minute) instead of being marked “answered”.
+- Status panel shows **Post timer** and **Reply / mention timer** clearly (interval + countdown).
+
+### Changed
+
+- Autopilot poll interval is 10s; failed posts/replies schedule a **1-minute** retry.
+- Scheduler also retries `failed` drafts after 1 minute.
+
+---
+
 ## [0.2.3] — 2026-07-27
 
 ### Added

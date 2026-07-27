@@ -92,12 +92,15 @@ app.whenReady().then(() => {
   ipcMain.handle('autopilot:set-running', async (_e, running: boolean) => {
     const settings = getSettings()
     await setSettings({ ...settings, autopilot: { ...settings.autopilot, enabled: running === true } })
-    // Launching clears the last-run stamp so the first pass fires on the next tick
-    // (within ~30s) instead of waiting a full interval.
-    if (running === true) await db.set('autopilotLastRun', 0)
-    const status = buildAutopilotStatus()
-    broadcastAutopilot(status)
-    return status
+    // Launch: reset BOTH post and reply timers so first checks fire immediately
+    // (not after a full interval). Reply checks are independent of posts.
+    if (running === true) {
+      await db.set('autopilotLastRun', 0)
+      await db.set('autopilotLastReplyRun', 0)
+      // Kick immediately so replies/mentions run now (don't wait for the poll).
+      void runAutopilotNow()
+    }
+    return buildAutopilotStatus()
   })
   ipcMain.handle('autopilot:run-now', () => runAutopilotNow())
 

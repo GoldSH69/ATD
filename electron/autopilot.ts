@@ -1,7 +1,7 @@
 import { db } from './localdb'
 import { getSettings } from './settings'
 import { fetchTopicNews } from './news'
-import { fetchUnansweredReplies, threadsMediaExists } from './threadsApi'
+import { fetchUnansweredReplies } from './threadsApi'
 import { allDrafts, upsertDraft } from './drafts'
 import { postDraftNow } from './scheduler'
 import {
@@ -21,8 +21,9 @@ import type { AutopilotLogEntry, AutopilotLogKind, AutopilotStatus, Draft } from
  * is visible in Drafts/Queue and shares the publish guards.
  */
 
-const TICK_MS = 30_000
-const FIRST_TICK_MS = 8_000
+const TICK_MS = 10_000 // poll often so 5-min reply timer and 1-min retries fire promptly
+const FIRST_TICK_MS = 3_000
+const RETRY_AFTER_MS = 60_000 // failed posts/replies re-attempt after 1 minute
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
 
@@ -75,7 +76,9 @@ const CATEGORY_QUERY: Record<string, string> = {
 }
 
 let started = false
-let busy = false
+/** Independent locks so a long post/LLM pass never blocks the reply timer. */
+let postBusy = false
+let replyBusy = false
 let logSeq = 0
 
 let statusListener: ((status: AutopilotStatus) => void) | null = null
@@ -86,10 +89,22 @@ export function setAutopilotStatusListener(cb: (status: AutopilotStatus) => void
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const dayKey = (): string => new Date().toLocaleDateString('en-CA') // YYYY-MM-DD (local)
+const isBusy = (): boolean => postBusy || replyBusy
 
 function getInt(key: string): number {
   const v = db.get<number>(key)
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
+}
+
+/** Schedule the next pass ~1 minute from now (for failures). */
+async function scheduleRetry(kind: 'post' | 'reply'): Promise<void> {
+  const ap = getSettings().autopilot
+  const intervalMin = kind === 'post' ? ap.intervalMinutes : ap.replyIntervalMinutes
+  const key = kind === 'post' ? AP_LAST_RUN : AP_LAST_REPLY_RUN
+  // lastRun = now - interval + 1min  →  due again after 1 minute
+  const stamp = Date.now() - intervalMin * 60_000 + RETRY_AFTER_MS
+  await db.set(key, stamp)
+  log('info', `${kind === 'post' ? 'Post' : 'Reply'} failure — will retry in ~1 minute.`)
 }
 
 /** Reset the per-day counters when the local date rolls over. */
@@ -143,7 +158,7 @@ export function buildAutopilotStatus(): AutopilotStatus {
   return {
     running: ap.enabled,
     goLive: ap.goLive,
-    busy,
+    busy: isBusy(),
     postsToday: posts,
     maxPostsPerDay: ap.maxPostsPerDay,
     repliesToday: replies,
@@ -176,22 +191,26 @@ export function startAutopilot(): void {
 }
 
 async function maybeTick(): Promise<void> {
-  if (busy) return
   const ap = getSettings().autopilot
   if (!ap.enabled) return
   const now = Date.now()
   const lastPost = db.get<number>(AP_LAST_RUN) ?? 0
   const lastReply = db.get<number>(AP_LAST_REPLY_RUN) ?? 0
-  const duePosts = now - lastPost >= ap.intervalMinutes * 60_000
+  // lastRun === 0 means "fire now" (launch / forced reset)
+  const duePosts = !postBusy && (lastPost === 0 || now - lastPost >= ap.intervalMinutes * 60_000)
   const repliesOn = ap.replyToAll || ap.replyToMentions
-  const dueReplies = repliesOn && now - lastReply >= ap.replyIntervalMinutes * 60_000
-  if (!duePosts && !dueReplies) return
-  await runAutopilotPass('scheduled', { posts: duePosts, replies: dueReplies })
+  const dueReplies =
+    !replyBusy &&
+    repliesOn &&
+    (lastReply === 0 || now - lastReply >= ap.replyIntervalMinutes * 60_000)
+  // Fire independently — a long post plan must not block the reply timer.
+  if (duePosts) void runAutopilotPass('scheduled', { posts: true, replies: false })
+  if (dueReplies) void runAutopilotPass('scheduled', { posts: false, replies: true })
 }
 
 /** Force one pass immediately (the "Run once now" button). Ignores the intervals. */
 export async function runAutopilotNow(): Promise<AutopilotStatus> {
-  if (!busy) await runAutopilotPass('manual', { posts: true, replies: true })
+  await runAutopilotPass('manual', { posts: true, replies: true })
   return buildAutopilotStatus()
 }
 
@@ -302,12 +321,19 @@ async function runPostPhase(postsToday: number): Promise<number> {
     }
     const res = await commitDraft(draft, ap.goLive)
     if (cand?.link) markUsedLink(cand.link)
-    created++
-    void db.set(AP_POSTS, postsToday + created)
     const preview = gen.text.length > 60 ? gen.text.slice(0, 59) + '…' : gen.text
-    if (!ap.goLive) log('post', `Drafted (review): ${preview}`)
-    else if (res.ok) log('post', `Posted: ${preview}`, res.permalink)
-    else log('error', `Publish failed: ${res.message}`)
+    if (!ap.goLive) {
+      created++
+      void db.set(AP_POSTS, postsToday + created)
+      log('post', `Drafted (review): ${preview}`)
+    } else if (res.ok) {
+      created++
+      void db.set(AP_POSTS, postsToday + created)
+      log('post', `Posted: ${preview}`, res.permalink)
+    } else {
+      log('error', `Publish failed: ${res.message}`)
+      await scheduleRetry('post')
+    }
   }
   return created
 }
@@ -341,7 +367,10 @@ async function fetchReplyContext(replyText: string, rootText: string): Promise<s
 async function runReplyPhase(repliesToday: number): Promise<number> {
   const settings = getSettings()
   const ap = settings.autopilot
-  if (!ap.replyToAll && !ap.replyToMentions) return 0
+  if (!ap.replyToAll && !ap.replyToMentions) {
+    log('skip', 'Reply scanning is off (enable replies and/or @mentions in Auto settings).')
+    return 0
+  }
   const remainingDay = ap.maxRepliesPerDay - repliesToday
   if (remainingDay <= 0) {
     log('skip', `Daily reply budget reached (${repliesToday}/${ap.maxRepliesPerDay}).`)
@@ -351,9 +380,11 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
   let replies
   try {
     // Mentions need threads_manage_mentions on the token; failures degrade to replies-only.
+    log('info', `Scanning replies${ap.replyToMentions ? ' + @mentions' : ''}…`)
     replies = await fetchUnansweredReplies(settings.threads, { includeMentions: ap.replyToMentions })
   } catch (err) {
     log('error', `Could not fetch replies/mentions: ${err instanceof Error ? err.message : String(err)}`)
+    await scheduleRetry('reply')
     return 0
   }
 
@@ -365,27 +396,49 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
   })
 
   const answered = new Set((db.get<string[]>(AP_ANSWERED) ?? []).filter((x) => typeof x === 'string'))
-  const localReplyIds = new Set(allDrafts().filter((d) => d.kind === 'reply' && d.replyToId).map((d) => d.replyToId))
+  // Only block targets we already successfully posted (or are posting right now).
+  // Failed drafts must NOT block retries — that was why replies stopped after one error.
+  const blockedIds = new Set(
+    allDrafts()
+      .filter(
+        (d) =>
+          d.kind === 'reply' &&
+          d.replyToId &&
+          (d.status === 'posted' || d.status === 'posting' || (d.status === 'draft' && !(ap.goLive && ap.autoReply)))
+      )
+      .map((d) => d.replyToId as string)
+  )
   const handle = ap.creatorHandle.trim().toLowerCase()
   const budget = Math.min(ap.maxRepliesPerRun, remainingDay)
   let sent = 0
+  let failures = 0
 
-  const threadsCfg = {
-    accessToken: settings.threads.accessToken,
-    userId: settings.threads.userId,
-  }
+  log('info', `Found ${replies.length} candidate reply/mention(s).`)
 
   for (const r of replies) {
     if (sent >= budget) break
-    if (answered.has(r.id) || localReplyIds.has(r.id)) continue
+    if (answered.has(r.id) || blockedIds.has(r.id)) continue
     const kind = r.kind === 'mention' ? 'mention' : 'reply'
     const label = kind === 'mention' ? 'mention' : 'reply'
 
-    // Skip deleted/expired targets before spending an LLM call.
-    if (!(await threadsMediaExists(threadsCfg, r.id))) {
-      answered.add(r.id)
-      void db.set(AP_ANSWERED, [...answered].slice(-1000))
-      log('skip', `Skipped stale ${label} from @${r.username} (media no longer exists).`)
+    // Retry an existing failed draft for this target instead of re-generating.
+    const failedExisting = allDrafts().find(
+      (d) => d.kind === 'reply' && d.replyToId === r.id && d.status === 'failed'
+    )
+    if (failedExisting) {
+      const res = await postDraftNow(failedExisting.id)
+      if (res.ok) {
+        answered.add(r.id)
+        void db.set(AP_ANSWERED, [...answered].slice(-1000))
+        sent++
+        void db.set(AP_REPLIES, repliesToday + sent)
+        const fresh = allDrafts().find((d) => d.id === failedExisting.id)
+        log('reply', `Retried ${label} to @${r.username}.`, fresh?.permalink)
+      } else {
+        failures++
+        log('error', `${label} retry failed (@${r.username}): ${res.message}`)
+      }
+      await delay(800)
       continue
     }
 
@@ -400,6 +453,7 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
       kind,
     })
     if (!gen.ok) {
+      failures++
       log('error', `${kind === 'mention' ? 'Mention' : 'Reply'} generation failed (@${r.username}): ${gen.message}`)
       continue
     }
@@ -419,23 +473,28 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
     const publishReply = ap.goLive && ap.autoReply
     const res = await commitDraft(draft, publishReply)
 
-    // Draft-only: count as handled. Live: only mark answered on success or permanent missing target.
-    const permanentMiss =
-      !res.ok && /no longer exists|does not exist|reply target/i.test(res.message)
-    if (!publishReply || res.ok || permanentMiss) {
+    if (!publishReply) {
+      // Draft-only: treat as handled so we don't re-draft every tick.
       answered.add(r.id)
       void db.set(AP_ANSWERED, [...answered].slice(-1000))
-    }
-    if (res.ok || !publishReply) {
       sent++
       void db.set(AP_REPLIES, repliesToday + sent)
+      log('reply', `Drafted ${label} to @${r.username} (review).`)
+    } else if (res.ok) {
+      answered.add(r.id)
+      void db.set(AP_ANSWERED, [...answered].slice(-1000))
+      sent++
+      void db.set(AP_REPLIES, repliesToday + sent)
+      log('reply', `Replied to ${label} from @${r.username}.`, res.permalink)
+    } else {
+      // Keep target eligible for retry — do NOT add to answered.
+      failures++
+      log('error', `${label} publish failed (@${r.username}): ${res.message}`)
     }
-    if (!publishReply) log('reply', `Drafted ${label} to @${r.username} (review).`)
-    else if (res.ok) log('reply', `Replied to ${label} from @${r.username}.`, res.permalink)
-    else log('error', `${label} publish failed (@${r.username}): ${res.message}`)
-    await delay(800) // gentle pacing so a burst of replies doesn't trip rate limits
+    await delay(800)
   }
-  if (sent === 0) log('info', 'No new replies or mentions to answer.')
+  if (sent === 0 && failures === 0) log('info', 'No new replies or mentions to answer.')
+  if (failures > 0) await scheduleRetry('reply')
   return sent
 }
 
@@ -443,9 +502,14 @@ async function runAutopilotPass(
   reason: 'scheduled' | 'manual',
   phases: { posts: boolean; replies: boolean }
 ): Promise<void> {
-  if (busy) return
   if (!phases.posts && !phases.replies) return
-  busy = true
+  // Independent locks: post work and reply work can overlap.
+  if (phases.posts && postBusy) phases = { ...phases, posts: false }
+  if (phases.replies && replyBusy) phases = { ...phases, replies: false }
+  if (!phases.posts && !phases.replies) return
+
+  if (phases.posts) postBusy = true
+  if (phases.replies) replyBusy = true
   broadcastStatus()
   try {
     const settings = getSettings()
@@ -466,20 +530,33 @@ async function runAutopilotPass(
       'info',
       `${parts.join(' + ')} (${reason}) — ${posts}/${settings.autopilot.maxPostsPerDay} posts, ${replies}/${settings.autopilot.maxRepliesPerDay} replies today.`
     )
-    // Stamp timers before work so a slow LLM call doesn't pile up overdue ticks.
     const now = Date.now()
+    // Run phases (possibly both). Stamp each timer when that phase starts.
+    const jobs: Promise<void>[] = []
     if (phases.posts) {
-      await db.set(AP_LAST_RUN, now)
-      await runPostPhase(posts)
+      jobs.push(
+        (async () => {
+          await db.set(AP_LAST_RUN, now)
+          await runPostPhase(posts)
+        })()
+      )
     }
     if (phases.replies) {
-      await db.set(AP_LAST_REPLY_RUN, now)
-      await runReplyPhase(getInt(AP_REPLIES))
+      jobs.push(
+        (async () => {
+          await db.set(AP_LAST_REPLY_RUN, now)
+          await runReplyPhase(getInt(AP_REPLIES))
+        })()
+      )
     }
+    await Promise.all(jobs)
   } catch (err) {
     log('error', `Autopilot pass failed: ${err instanceof Error ? err.message : String(err)}`)
+    if (phases.replies) await scheduleRetry('reply')
+    if (phases.posts) await scheduleRetry('post')
   } finally {
-    busy = false
+    if (phases.posts) postBusy = false
+    if (phases.replies) replyBusy = false
     broadcastStatus()
   }
 }

@@ -4,10 +4,12 @@ import { allDrafts, updateDraft } from './drafts'
 import { publishPost, publishReply } from './threadsApi'
 import { runAutoDraft } from './pipeline'
 
-const TICK_MS = 30_000
+const TICK_MS = 15_000
 const FIRST_TICK_MS = 5_000
 const LAST_RUN_KEY = 'autoDraftLastRun'
 const MAX_CHARS = 500
+/** Failed drafts (post or reply) are retried after this delay. */
+const FAILED_RETRY_MS = 60_000
 
 let started = false
 // Posting and auto-drafting have independent guards so a slow auto-draft run
@@ -46,18 +48,33 @@ async function recoverInterrupted(): Promise<void> {
   }
 }
 
+function isRetryableFailed(d: { status: string; updatedAt?: number; error?: string }): boolean {
+  if (d.status !== 'failed') return false
+  const updated = typeof d.updatedAt === 'number' ? d.updatedAt : 0
+  if (Date.now() - updated < FAILED_RETRY_MS) return false
+  // Permanent validation errors — don't spin forever.
+  const err = (d.error ?? '').toLowerCase()
+  if (/empty|exceeds the \d+-character|missing the post/i.test(err)) return false
+  return true
+}
+
 async function tickPosting(): Promise<void> {
   if (postingInFlight) return
   postingInFlight = true
   try {
     const due = allDrafts().filter(isDue)
-    for (const d of due) {
+    const retries = allDrafts().filter(isRetryableFailed)
+    const queue = [...due, ...retries]
+    for (const d of queue) {
       // Re-check against the live cache: the user may have unscheduled or edited
       // this draft while an earlier publish in this loop was awaiting.
       const cur = allDrafts().find((x) => x.id === d.id)
-      if (!cur || !isDue(cur)) continue
+      if (!cur) continue
+      if (cur.status === 'scheduled' && !isDue(cur)) continue
+      if (cur.status === 'failed' && !isRetryableFailed(cur)) continue
+      if (cur.status !== 'scheduled' && cur.status !== 'failed') continue
       const res = await postDraftNow(d.id)
-      if (!res.ok) console.error(`[scheduler] scheduled post ${d.id} failed: ${res.message}`)
+      if (!res.ok) console.error(`[scheduler] publish ${d.id} failed: ${res.message}`)
     }
   } catch (err) {
     console.error('[scheduler] posting tick failed', err)
