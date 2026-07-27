@@ -14,10 +14,15 @@ export default function ThreadsTokenHelp({ onClose }: Props) {
           <li>Click Add or Remove Threads Testers and add your Threads account.</li>
           <li>Accept the tester invite in Threads if Meta asks.</li>
           <li>Return to User Token Generator and generate a token.</li>
+          <li>
+            Include permissions for publishing, replies, and mentions (
+            <code>threads_manage_mentions</code> is required for Full-Auto to answer @mentions).
+          </li>
           <li>Paste that token into AutoThreads. Leave User ID blank unless testing tells you otherwise.</li>
         </ol>
         <div className="help-note">
-          Keep the token private. AutoThreads stores it encrypted with your OS keychain.
+          Keep the token private. AutoThreads stores it encrypted with your OS keychain. If mentions
+          never show up, regenerate the token with <code>threads_manage_mentions</code>.
         </div>
         <div className="confirm-actions">
           <button className="btn primary" onClick={onClose}>

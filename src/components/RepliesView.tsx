@@ -51,6 +51,7 @@ export default function RepliesView() {
         replyText: r.text,
         replyUsername: r.username,
         rootPostText: r.rootPostText,
+        kind: r.kind === 'mention' ? 'mention' : 'reply',
       })
       if (!res.ok) {
         toast('err', res.message)
@@ -121,10 +122,13 @@ export default function RepliesView() {
               <div className="list-item" key={r.id}>
                 <div className="item-title">
                   <span>@{r.username}</span>
+                  {r.kind === 'mention' && <span className="badge">mention</span>}
                   <span className="item-meta">{timeAgo(Date.parse(r.timestamp))}</span>
                 </div>
                 <div className="item-snippet">{r.text}</div>
-                <div className="item-meta">on: {snippet(r.rootPostText, 90)}</div>
+                <div className="item-meta">
+                  {r.kind === 'mention' ? 'mentioned you' : `on: ${snippet(r.rootPostText, 90)}`}
+                </div>
                 <div className="item-meta">
                   {existing ? (
                     <>

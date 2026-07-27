@@ -11,7 +11,7 @@ control, or hand the wheel to a self-running agent that posts and replies on its
 
 <br />
 
-![Version](https://img.shields.io/badge/version-0.2.1-111111?style=flat-square)
+![Version](https://img.shields.io/badge/version-0.2.2-111111?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-111111?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-111111?style=flat-square)
 <br />
@@ -109,7 +109,7 @@ every N minutes
 | **Post language** | Match the source, Korean only, English only, or follow the app language. |
 | **Personality** | Agent name, creator, creator `@handle`, address term (e.g. "Master"), and tone notes. |
 | **Cadence & caps** | Think-interval, max posts per run, **max posts per day**, original-vs-news mix. |
-| **Replies** | Auto-reply vs draft replies, with per-run and per-day caps. |
+| **Replies & mentions** | Auto-reply vs draft for replies on your posts **and** @mentions of you, with per-run and per-day caps. Mentions need `threads_manage_mentions`. |
 | **Publishing** | **Live** to Threads, or **draft-only** as a safety valve. |
 
 ### Controls

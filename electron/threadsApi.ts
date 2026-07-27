@@ -210,7 +210,8 @@ async function isAnsweredByMe(cfg: ThreadsCfg, replyId: string, myUsername: stri
   }
 }
 
-export async function fetchUnansweredReplies(cfg: ThreadsCfg): Promise<UnansweredReply[]> {
+/** Replies on your own recent posts that you have not answered yet. */
+async function fetchUnansweredPostReplies(cfg: ThreadsCfg): Promise<UnansweredReply[]> {
   const me = await apiGet<{ username?: string }>(cfg, '/me', { fields: 'id,username' })
   const myUsername = typeof me.username === 'string' ? me.username : ''
   const posts = await fetchMyPosts(cfg, 10)
@@ -242,8 +243,81 @@ export async function fetchUnansweredReplies(cfg: ThreadsCfg): Promise<Unanswere
         timestamp: typeof m.timestamp === 'string' ? m.timestamp : '',
         rootPostId: post.id,
         rootPostText: post.text,
+        kind: 'reply',
       })
     }
+  }
+  return out
+}
+
+/**
+ * Public posts where another profile @mentioned you (Threads Mentions API).
+ * Requires `threads_manage_mentions` on the access token. Returns [] if the
+ * permission is missing or the call fails (so reply-only mode still works).
+ */
+export async function fetchUnansweredMentions(cfg: ThreadsCfg): Promise<UnansweredReply[]> {
+  const me = await apiGet<{ id?: string; username?: string }>(cfg, '/me', { fields: 'id,username' })
+  const myUsername = typeof me.username === 'string' ? me.username : ''
+  const u = uid(cfg)
+  let data: { data?: Array<Partial<RawReply> & { permalink?: string }> }
+  try {
+    data = await apiGet(cfg, `/${u}/mentions`, {
+      fields: 'id,text,username,timestamp,permalink,is_reply,replied_to',
+      limit: '25',
+    })
+  } catch (err) {
+    // Common when the token was minted without threads_manage_mentions.
+    console.warn(
+      '[threads] mentions fetch failed (need threads_manage_mentions on the token?):',
+      err instanceof Error ? err.message : err
+    )
+    return []
+  }
+
+  const out: UnansweredReply[] = []
+  let probeBudget = ANSWER_PROBE_BUDGET
+  for (const m of data.data ?? []) {
+    if (typeof m.id !== 'string' || !m.id) continue
+    const username = typeof m.username === 'string' ? m.username : ''
+    if (!username || username === myUsername) continue
+    const text = typeof m.text === 'string' ? m.text : ''
+    if (!text.trim()) continue
+    // Skip mentions we already answered under.
+    if (probeBudget > 0) {
+      probeBudget--
+      if (await isAnsweredByMe(cfg, m.id, myUsername)) continue
+    }
+    out.push({
+      id: m.id,
+      text,
+      username,
+      timestamp: typeof m.timestamp === 'string' ? m.timestamp : '',
+      // For mentions the media itself is the post to reply to.
+      rootPostId: m.id,
+      rootPostText: text,
+      kind: 'mention',
+    })
+  }
+  return out
+}
+
+/**
+ * Unanswered engagement: replies on your posts + (optional) @mentions of you.
+ * Mentions require `threads_manage_mentions`; failures degrade to replies only.
+ */
+export async function fetchUnansweredReplies(
+  cfg: ThreadsCfg,
+  opts?: { includeMentions?: boolean }
+): Promise<UnansweredReply[]> {
+  const includeMentions = opts?.includeMentions !== false
+  const replies = await fetchUnansweredPostReplies(cfg)
+  const mentions = includeMentions ? await fetchUnansweredMentions(cfg) : []
+  const seen = new Set(replies.map((r) => r.id))
+  const out = [...replies]
+  for (const m of mentions) {
+    if (seen.has(m.id)) continue
+    seen.add(m.id)
+    out.push(m)
   }
   const ts = (s: string): number => {
     const t = Date.parse(s)

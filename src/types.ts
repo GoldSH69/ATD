@@ -57,6 +57,7 @@ export interface AutopilotSettings {
   creatorHandle: string
   creatorAddress: string
   replyToAll: boolean
+  replyToMentions: boolean
   autoReply: boolean
   maxRepliesPerRun: number
   maxRepliesPerDay: number
@@ -156,6 +157,8 @@ export interface ImageCandidate {
   pageUrl: string
 }
 
+export type EngagementKind = 'reply' | 'mention'
+
 export interface UnansweredReply {
   id: string
   text: string
@@ -163,6 +166,8 @@ export interface UnansweredReply {
   timestamp: string
   rootPostId: string
   rootPostText: string
+  /** 'reply' = comment on your post; 'mention' = someone @mentioned you. */
+  kind?: EngagementKind
 }
 
 export interface TestResult {
@@ -208,6 +213,7 @@ export interface BridgeApi {
     replyText: string
     replyUsername: string
     rootPostText: string
+    kind?: EngagementKind
   }): Promise<GenerateResult>
   imageKeywords(input: { topic?: string; title?: string; text: string }): Promise<GenerateResult>
   imageSearch(query: string): Promise<{ ok: boolean; images: ImageCandidate[]; message: string }>

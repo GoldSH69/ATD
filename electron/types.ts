@@ -64,7 +64,8 @@ export interface AutopilotSettings {
   creatorName: string         // "an AI agent created by ___"
   creatorHandle: string       // the creator's Threads @handle (without @)
   creatorAddress: string      // how to address the creator, e.g. "Master"
-  replyToAll: boolean         // scan and answer unanswered replies
+  replyToAll: boolean         // scan and answer unanswered replies on your posts
+  replyToMentions: boolean    // also answer @mentions of your account on others' posts
   autoReply: boolean          // publish replies for real vs draft them
   maxRepliesPerRun: number
   maxRepliesPerDay: number
@@ -163,6 +164,9 @@ export interface ThreadsPost {
   permalink?: string
 }
 
+/** Where the inbound message came from. */
+export type EngagementKind = 'reply' | 'mention'
+
 export interface UnansweredReply {
   id: string
   text: string
@@ -170,6 +174,8 @@ export interface UnansweredReply {
   timestamp: string
   rootPostId: string
   rootPostText: string
+  /** 'reply' = comment on your post; 'mention' = someone @mentioned you. Defaults to reply. */
+  kind?: EngagementKind
 }
 
 export interface TestResult {

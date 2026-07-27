@@ -10,7 +10,8 @@ import type { AppSettings, AutopilotSettings, PostLanguageMode } from './types'
  */
 
 const ENC_PREFIX = 'enc:v1:'
-const DEFAULT_THREADS_SCOPES = 'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies'
+const DEFAULT_THREADS_SCOPES =
+  'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies,threads_manage_mentions'
 
 export function defaultSettings(): AppSettings {
   return {
@@ -64,10 +65,21 @@ export function defaultAutopilot(): AutopilotSettings {
     creatorHandle: '',
     creatorAddress: 'Master',
     replyToAll: true,
+    replyToMentions: true,
     autoReply: true,
     maxRepliesPerRun: 5,
     maxRepliesPerDay: 100,
   }
+}
+
+/** Ensure newer scopes are present when the user still has an older default string. */
+function ensureMentionScope(scopes: string): string {
+  const parts = scopes
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (!parts.includes('threads_manage_mentions')) parts.push('threads_manage_mentions')
+  return parts.join(',')
 }
 
 function encryptSecret(value: string): string {
@@ -196,7 +208,7 @@ function normalize(raw: Partial<AppSettings> | null): AppSettings {
       appId: str(raw.threads?.appId, '').trim(),
       appSecret: str(raw.threads?.appSecret, ''),
       redirectUri: str(raw.threads?.redirectUri, d.threads.redirectUri).trim() || d.threads.redirectUri,
-      scopes: str(raw.threads?.scopes, d.threads.scopes).trim() || d.threads.scopes,
+      scopes: ensureMentionScope(str(raw.threads?.scopes, d.threads.scopes).trim() || d.threads.scopes),
       tokenExpiresAt:
         typeof raw.threads?.tokenExpiresAt === 'number' && Number.isFinite(raw.threads.tokenExpiresAt)
           ? raw.threads.tokenExpiresAt
@@ -251,6 +263,7 @@ function normalizeAutopilot(
     creatorHandle: str(r.creatorHandle, '').trim().replace(/^@+/, '').slice(0, 80),
     creatorAddress: str(r.creatorAddress, d.creatorAddress).slice(0, 60),
     replyToAll: typeof r.replyToAll === 'boolean' ? r.replyToAll : d.replyToAll,
+    replyToMentions: typeof r.replyToMentions === 'boolean' ? r.replyToMentions : d.replyToMentions,
     autoReply: typeof r.autoReply === 'boolean' ? r.autoReply : d.autoReply,
     maxRepliesPerRun: clampInt(r.maxRepliesPerRun, 1, 25, d.maxRepliesPerRun),
     maxRepliesPerDay: clampInt(r.maxRepliesPerDay, 1, 300, d.maxRepliesPerDay),

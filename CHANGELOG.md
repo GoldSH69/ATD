@@ -9,6 +9,22 @@ Session-level notes also live under `_changelog/`.
 
 ---
 
+## [0.2.2] — 2026-07-27
+
+### Added
+
+- **Full-Auto @mention replies** — while launched, the agent also answers public posts that @mention your account (Threads Mentions API), not only replies under your own posts.
+- Auto tab toggle **Reply to @mentions of me** (on by default).
+- Replies view shows a `mention` badge for inbound mentions.
+- Default OAuth/token scopes now include `threads_manage_mentions` (older saved scopes are auto-extended).
+
+### Notes
+
+- Mentions require a Threads access token that includes **`threads_manage_mentions`**. If the permission is missing, mention fetch fails soft and reply-only mode still works — regenerate the token after adding the permission in Meta Developers.
+- Same cadence as replies (Full-Auto interval, default 1 minute) and shared daily reply caps.
+
+---
+
 ## [0.2.1] — 2026-07-27
 
 ### Changed

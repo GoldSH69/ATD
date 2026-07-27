@@ -453,11 +453,14 @@ export default function AutopilotView() {
             </div>
           </div>
 
-          {/* replies */}
+          {/* replies + mentions */}
           <div className="section">
-            <div className="section-title">{t('Replies', '답글')}</div>
+            <div className="section-title">{t('Replies & mentions', '답글 · 멘션')}</div>
             <div className="section-desc">
-              {t('Scan your posts and answer every unanswered reply, in context.', '내 게시물의 미답변 답글을 문맥에 맞게 모두 응대합니다.')}
+              {t(
+                'Answer unanswered replies on your posts and/or @mentions of your account. Mentions need the threads_manage_mentions permission on your access token.',
+                '내 게시물의 미답변 답글과 계정 @멘션에 응대합니다. 멘션은 액세스 토큰에 threads_manage_mentions 권한이 필요합니다.'
+              )}
             </div>
             <div className="field">
               <label className="toggle">
@@ -466,10 +469,20 @@ export default function AutopilotView() {
                   checked={form.replyToAll}
                   onChange={(e) => edit({ replyToAll: e.target.checked })}
                 />
-                <span>{t('Reply to all incoming replies', '들어오는 모든 답글에 응대')}</span>
+                <span>{t('Reply to replies on my posts', '내 게시물 답글에 응대')}</span>
               </label>
             </div>
-            {form.replyToAll && (
+            <div className="field">
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={form.replyToMentions}
+                  onChange={(e) => edit({ replyToMentions: e.target.checked })}
+                />
+                <span>{t('Reply to @mentions of me', '나를 @멘션한 글에 응대')}</span>
+              </label>
+            </div>
+            {(form.replyToAll || form.replyToMentions) && (
               <>
                 <div className="field">
                   <label className="toggle">

@@ -325,7 +325,7 @@ async function fetchReplyContext(replyText: string, rootText: string): Promise<s
 async function runReplyPhase(repliesToday: number): Promise<number> {
   const settings = getSettings()
   const ap = settings.autopilot
-  if (!ap.replyToAll) return 0
+  if (!ap.replyToAll && !ap.replyToMentions) return 0
   const remainingDay = ap.maxRepliesPerDay - repliesToday
   if (remainingDay <= 0) {
     log('skip', `Daily reply budget reached (${repliesToday}/${ap.maxRepliesPerDay}).`)
@@ -334,11 +334,19 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
 
   let replies
   try {
-    replies = await fetchUnansweredReplies(settings.threads)
+    // Mentions need threads_manage_mentions on the token; failures degrade to replies-only.
+    replies = await fetchUnansweredReplies(settings.threads, { includeMentions: ap.replyToMentions })
   } catch (err) {
-    log('error', `Could not fetch replies: ${err instanceof Error ? err.message : String(err)}`)
+    log('error', `Could not fetch replies/mentions: ${err instanceof Error ? err.message : String(err)}`)
     return 0
   }
+
+  // Filter by enabled engagement types.
+  replies = replies.filter((r) => {
+    const kind = r.kind ?? 'reply'
+    if (kind === 'mention') return ap.replyToMentions
+    return ap.replyToAll
+  })
 
   const answered = new Set((db.get<string[]>(AP_ANSWERED) ?? []).filter((x) => typeof x === 'string'))
   const localReplyIds = new Set(allDrafts().filter((d) => d.kind === 'reply' && d.replyToId).map((d) => d.replyToId))
@@ -349,6 +357,7 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
   for (const r of replies) {
     if (sent >= budget) break
     if (answered.has(r.id) || localReplyIds.has(r.id)) continue
+    const kind = r.kind === 'mention' ? 'mention' : 'reply'
     const isCreator = handle !== '' && r.username.trim().toLowerCase() === handle
     const contextText = await fetchReplyContext(r.text, r.rootPostText)
     const gen = await generateAutopilotReply({
@@ -357,9 +366,10 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
       rootPostText: r.rootPostText,
       contextText,
       isCreator,
+      kind,
     })
     if (!gen.ok) {
-      log('error', `Reply generation failed (@${r.username}): ${gen.message}`)
+      log('error', `${kind === 'mention' ? 'Mention' : 'Reply'} generation failed (@${r.username}): ${gen.message}`)
       continue
     }
     const now = Date.now()
@@ -370,6 +380,7 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
       replyToId: r.id,
       replyToText: r.text,
       replyToUsername: r.username,
+      topic: kind === 'mention' ? 'mention' : undefined,
       status: 'draft',
       createdAt: now,
       updatedAt: now,
@@ -380,12 +391,13 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
     void db.set(AP_ANSWERED, [...answered].slice(-1000))
     sent++
     void db.set(AP_REPLIES, repliesToday + sent)
-    if (!publishReply) log('reply', `Drafted reply to @${r.username} (review).`)
-    else if (res.ok) log('reply', `Replied to @${r.username}.`, res.permalink)
-    else log('error', `Reply publish failed (@${r.username}): ${res.message}`)
+    const label = kind === 'mention' ? 'mention' : 'reply'
+    if (!publishReply) log('reply', `Drafted ${label} to @${r.username} (review).`)
+    else if (res.ok) log('reply', `Replied to ${label} from @${r.username}.`, res.permalink)
+    else log('error', `${label} publish failed (@${r.username}): ${res.message}`)
     await delay(800) // gentle pacing so a burst of replies doesn't trip rate limits
   }
-  if (sent === 0) log('info', 'No new replies to answer.')
+  if (sent === 0) log('info', 'No new replies or mentions to answer.')
   return sent
 }
 

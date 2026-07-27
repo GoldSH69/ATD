@@ -101,13 +101,17 @@ export async function generateReplyDraft(input: {
   replyText: string
   replyUsername: string
   rootPostText: string
+  kind?: 'reply' | 'mention'
 }): Promise<GenerateResult> {
   const settings = getSettings()
   const missing = unconfiguredMessage(settings.llm)
   if (missing) return { ok: false, text: '', message: missing }
   const user =
-    `The author posted: "${input.rootPostText}". @${input.replyUsername} replied: "${input.replyText}". ` +
-    `Write the author's reply — helpful, in-voice, under ${MAX_CHARS} chars.`
+    input.kind === 'mention'
+      ? `@${input.replyUsername} mentioned you in a Threads post: "${input.replyText}". ` +
+        `Write a short natural reply under ${MAX_CHARS} chars — acknowledge them and answer if they asked something.`
+      : `The author posted: "${input.rootPostText}". @${input.replyUsername} replied: "${input.replyText}". ` +
+        `Write the author's reply — helpful, in-voice, under ${MAX_CHARS} chars.`
   return runGeneration(settings, user)
 }
 
@@ -320,6 +324,8 @@ export interface AutopilotReplyInput {
   rootPostText: string
   contextText?: string
   isCreator: boolean
+  /** 'mention' = someone @mentioned you on their post; default is a reply on yours. */
+  kind?: 'reply' | 'mention'
 }
 
 export async function generateAutopilotReply(input: AutopilotReplyInput): Promise<GenerateResult> {
@@ -328,9 +334,18 @@ export async function generateAutopilotReply(input: AutopilotReplyInput): Promis
   if (missing) return { ok: false, text: '', message: missing }
   const ap = settings.autopilot
   const parts: string[] = []
-  parts.push('Someone replied to your Threads post.')
-  parts.push(`Your original post: "${input.rootPostText}".`)
-  parts.push(`@${input.replyUsername} replied: "${input.replyText}".`)
+  const isMention = input.kind === 'mention'
+  if (isMention) {
+    parts.push('Someone @mentioned you in a Threads post (not necessarily a reply on your own thread).')
+    parts.push(`@${input.replyUsername} wrote: "${input.replyText}".`)
+    parts.push(
+      'Write a short, natural reply to that mention — acknowledge them, answer if they asked something, and stay in character. Do not restate the whole post.'
+    )
+  } else {
+    parts.push('Someone replied to your Threads post.')
+    parts.push(`Your original post: "${input.rootPostText}".`)
+    parts.push(`@${input.replyUsername} replied: "${input.replyText}".`)
+  }
   if (input.contextText && input.contextText.trim()) {
     parts.push(`Extra context from a linked page: "${input.contextText.trim().slice(0, 500)}".`)
   }
