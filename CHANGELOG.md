@@ -9,6 +9,16 @@ Session-level notes also live under `_changelog/`.
 
 ---
 
+## [0.2.6] — 2026-07-27
+
+### Fixed
+
+- **Ongoing threads** — unanswered reply scan no longer keeps only the first top-level comment. Nested replies in a conversation (people continuing a thread) are included and answered.
+- Conversation fetch is paginated; `/replies` fallback walks child replies so nested comments still surface when `/conversation` is unavailable.
+- Default **max replies per run** raised to **15** so a busy thread can get multiple answers in one tick.
+
+---
+
 ## [0.2.5] — 2026-07-27
 
 ### Fixed

@@ -272,28 +272,84 @@ interface RawReply {
   text?: string
   username?: string
   timestamp?: string
+  has_replies?: boolean
+  is_reply?: boolean
   replied_to?: { id?: string }
 }
 
-/** /conversation returns the whole (flattened) tree; /replies only top-level replies. */
+const REPLY_FIELDS = 'id,text,username,timestamp,replied_to,has_replies,is_reply'
+
+type PagedReplies = {
+  data?: RawReply[]
+  paging?: { cursors?: { after?: string }; next?: string }
+}
+
+/** Fetch all pages of a replies/conversation edge (up to maxPages). */
+async function fetchAllReplyPages(
+  cfg: ThreadsCfg,
+  path: string,
+  maxPages = 5
+): Promise<RawReply[]> {
+  const out: RawReply[] = []
+  let after: string | undefined
+  for (let page = 0; page < maxPages; page++) {
+    const params: Record<string, string> = { fields: REPLY_FIELDS, limit: '100' }
+    if (after) params.after = after
+    const data = await apiGet<PagedReplies>(cfg, path, params)
+    const batch = data.data ?? []
+    out.push(...batch)
+    after = data.paging?.cursors?.after
+    if (!after || batch.length === 0) break
+  }
+  return out
+}
+
+/**
+ * Full conversation under a post.
+ * Prefer /conversation (flattened tree including nested replies). Fall back to
+ * /replies and walk children so ongoing threads aren't limited to the first
+ * top-level comment.
+ */
 async function fetchReplyMessages(
   cfg: ThreadsCfg,
-  postId: string
-): Promise<{ items: RawReply[]; topLevelOnly: boolean }> {
-  const params = { fields: 'id,text,username,timestamp,replied_to', limit: '100' }
+  postId: string,
+  expandBudget: { left: number }
+): Promise<{ items: RawReply[]; source: 'conversation' | 'replies-tree' }> {
   try {
-    const data = await apiGet<{ data?: RawReply[] }>(cfg, `/${postId}/conversation`, params)
-    return { items: data.data ?? [], topLevelOnly: false }
+    const items = await fetchAllReplyPages(cfg, `/${postId}/conversation`, 5)
+    return { items, source: 'conversation' }
   } catch {
-    const data = await apiGet<{ data?: RawReply[] }>(cfg, `/${postId}/replies`, params)
-    return { items: data.data ?? [], topLevelOnly: true }
+    // /replies is top-level only — expand nested replies so later comments in a
+    // thread are still discovered.
+    const top = await fetchAllReplyPages(cfg, `/${postId}/replies`, 5)
+    const all: RawReply[] = [...top]
+    const seen = new Set(top.map((r) => r.id).filter((id): id is string => typeof id === 'string'))
+    const queue = [...top]
+    while (queue.length > 0 && expandBudget.left > 0) {
+      const parent = queue.shift()!
+      if (typeof parent.id !== 'string' || !parent.id) continue
+      // Skip expand when API says there are no children (when field present).
+      if (parent.has_replies === false) continue
+      expandBudget.left--
+      try {
+        const children = await fetchAllReplyPages(cfg, `/${parent.id}/replies`, 3)
+        for (const child of children) {
+          if (typeof child.id !== 'string' || !child.id || seen.has(child.id)) continue
+          seen.add(child.id)
+          all.push(child)
+          queue.push(child)
+        }
+      } catch {
+        // Best-effort expand; keep what we have.
+      }
+    }
+    return { items: all, source: 'replies-tree' }
   }
 }
 
-// In /replies fallback mode the author's own answers sit one level deeper than
-// the top-level list, so we probe each candidate's own replies to detect them.
-// Bounded by a global budget so a busy account can't fan out into hundreds of calls.
-const ANSWER_PROBE_BUDGET = 40
+// Bounded probes so a busy account can't fan out into hundreds of answer checks.
+const ANSWER_PROBE_BUDGET = 80
+const REPLY_EXPAND_BUDGET = 60
 
 async function isAnsweredByMe(cfg: ThreadsCfg, replyId: string, myUsername: string): Promise<boolean> {
   const me = myUsername.toLowerCase()
@@ -310,16 +366,33 @@ async function isAnsweredByMe(cfg: ThreadsCfg, replyId: string, myUsername: stri
   }
 }
 
-/** Replies on your own recent posts that you have not answered yet. */
+/**
+ * All unanswered replies under your recent posts — including nested replies in
+ * ongoing threads (not just the first top-level comment on each post).
+ */
 async function fetchUnansweredPostReplies(cfg: ThreadsCfg): Promise<UnansweredReply[]> {
   const me = await apiGet<{ username?: string }>(cfg, '/me', { fields: 'id,username' })
   const myUsername = (typeof me.username === 'string' ? me.username : '').toLowerCase()
-  const posts = await fetchMyPosts(cfg, 10)
+  // More posts so busy accounts still surface newer threads.
+  const posts = await fetchMyPosts(cfg, 25)
   const out: UnansweredReply[] = []
   let probeBudget = ANSWER_PROBE_BUDGET
+  const expandBudget = { left: REPLY_EXPAND_BUDGET }
+
   // Sequential on purpose: parallel conversation fetches trip Meta rate limits.
   for (const post of posts) {
-    const { items, topLevelOnly } = await fetchReplyMessages(cfg, post.id)
+    let items: RawReply[]
+    let source: 'conversation' | 'replies-tree'
+    try {
+      const fetched = await fetchReplyMessages(cfg, post.id, expandBudget)
+      items = fetched.items
+      source = fetched.source
+    } catch (err) {
+      console.warn(`[threads] could not load replies for ${post.id}:`, errText(err))
+      continue
+    }
+
+    // Map every message we authored → the parent we replied to (answered).
     const answeredIds = new Set<string>()
     for (const m of items) {
       const uname = (m.username ?? '').toLowerCase()
@@ -327,19 +400,27 @@ async function fetchUnansweredPostReplies(cfg: ThreadsCfg): Promise<UnansweredRe
         answeredIds.add(m.replied_to.id)
       }
     }
+
     for (const m of items) {
       if (typeof m.id !== 'string' || !m.id) continue
+      // Skip the root post if it appears in the conversation list.
+      if (m.id === post.id) continue
       const uname = (m.username ?? '').toLowerCase()
       if (!uname || (myUsername && uname === myUsername)) continue
       if (answeredIds.has(m.id)) continue
-      if (!topLevelOnly && m.replied_to?.id !== post.id) continue
+
+      // IMPORTANT: include nested replies (replied_to !== root). Previously we
+      // only kept top-level replies, so ongoing threads were ignored after the
+      // first comment.
       const text = typeof m.text === 'string' ? m.text : ''
       if (!text.trim()) continue
-      // /conversation carries our answers inline; /replies does not, so probe.
-      if (topLevelOnly && probeBudget > 0 && myUsername) {
+
+      // /replies-tree may not include our own nested answers inline — probe.
+      if (source === 'replies-tree' && probeBudget > 0 && myUsername) {
         probeBudget--
         if (await isAnsweredByMe(cfg, m.id, myUsername)) continue
       }
+
       out.push({
         id: m.id,
         text,
@@ -351,6 +432,14 @@ async function fetchUnansweredPostReplies(cfg: ThreadsCfg): Promise<UnansweredRe
       })
     }
   }
+
+  // Newest first so ongoing threads get attention before old leftovers.
+  const ts = (s: string): number => {
+    const t = Date.parse(s)
+    return Number.isNaN(t) ? 0 : t
+  }
+  out.sort((a, b) => ts(b.timestamp) - ts(a.timestamp))
+  console.info(`[threads] unanswered post-replies: ${out.length} (nested included)`)
   return out
 }
 
@@ -493,5 +582,6 @@ export async function fetchUnansweredEngagement(
     return Number.isNaN(t) ? 0 : t
   }
   out.sort((a, b) => ts(b.timestamp) - ts(a.timestamp))
-  return { replies: out.slice(0, 50), mentionError }
+  // Cap inbox size but keep room for nested replies across recent posts.
+  return { replies: out.slice(0, 100), mentionError }
 }

@@ -68,7 +68,7 @@ export function defaultAutopilot(): AutopilotSettings {
     replyToAll: true,
     replyToMentions: true,
     autoReply: true,
-    maxRepliesPerRun: 5,
+    maxRepliesPerRun: 15, // allow multiple replies in an ongoing thread per tick
     maxRepliesPerDay: 100,
   }
 }
