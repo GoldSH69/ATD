@@ -1,6 +1,6 @@
 import { safeStorage } from 'electron'
 import { db } from './localdb'
-import type { AppSettings } from './types'
+import type { AppSettings, AutopilotSettings, PostLanguageMode } from './types'
 
 /**
  * Settings store. Secrets (API keys, Threads access token) are encrypted at
@@ -18,7 +18,7 @@ export function defaultSettings(): AppSettings {
     language: 'en',
     onboarded: false,
     topics: ['artificial intelligence', 'technology', 'startups'],
-    newsSources: { google: true, hackerNews: true, naver: false, custom: [] },
+    newsSources: { google: true, yahoo: false, hackerNews: true, naver: false, custom: [] },
     llm: {
       provider: 'local',
       claude: { apiKey: '', model: 'claude-sonnet-5' },
@@ -39,6 +39,30 @@ export function defaultSettings(): AppSettings {
     },
     style: { notes: '', samples: [] },
     autoDraft: { enabled: false, intervalMinutes: 120, maxPerRun: 2 },
+    autopilot: defaultAutopilot(),
+  }
+}
+
+export function defaultAutopilot(): AutopilotSettings {
+  return {
+    enabled: false,
+    goLive: true,
+    intervalMinutes: 60,
+    goal: 'Grow an engaged Threads following by posting relatable, timely, human-sounding takes that spark replies and likes.',
+    categories: ['technology', 'ai', 'startups'],
+    postLanguage: 'match',
+    toneNotes: '',
+    maxPostsPerDay: 6,
+    maxPostsPerRun: 1,
+    originalRatio: 35,
+    agentName: '',
+    creatorName: '',
+    creatorHandle: '',
+    creatorAddress: 'Master',
+    replyToAll: true,
+    autoReply: true,
+    maxRepliesPerRun: 5,
+    maxRepliesPerDay: 40,
   }
 }
 
@@ -122,6 +146,7 @@ function normalize(raw: Partial<AppSettings> | null): AppSettings {
     topics: Array.isArray(raw.topics) ? topics : d.topics,
     newsSources: {
       google: bool(raw.newsSources?.google, d.newsSources.google),
+      yahoo: bool(raw.newsSources?.yahoo, d.newsSources.yahoo),
       hackerNews: bool(raw.newsSources?.hackerNews, d.newsSources.hackerNews),
       naver: bool(raw.newsSources?.naver, d.newsSources.naver),
       custom: customNewsSources(raw.newsSources?.custom),
@@ -179,6 +204,47 @@ function normalize(raw: Partial<AppSettings> | null): AppSettings {
       intervalMinutes: Math.max(15, Number(raw.autoDraft?.intervalMinutes) || d.autoDraft.intervalMinutes),
       maxPerRun: Math.min(10, Math.max(1, Number(raw.autoDraft?.maxPerRun) || d.autoDraft.maxPerRun)),
     },
+    autopilot: normalizeAutopilot(raw.autopilot, d.autopilot),
+  }
+}
+
+function postLanguageMode(v: unknown, fallback: PostLanguageMode): PostLanguageMode {
+  return v === 'match' || v === 'ko' || v === 'en' || v === 'ui' ? v : fallback
+}
+
+function clampInt(v: unknown, min: number, max: number, fallback: number): number {
+  const n = Math.round(Number(v))
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, n))
+}
+
+function normalizeAutopilot(
+  raw: Partial<AutopilotSettings> | undefined,
+  d: AutopilotSettings
+): AutopilotSettings {
+  const r = (raw ?? {}) as Partial<AutopilotSettings>
+  const categories = strArr(r.categories)
+    .map((c) => c.trim())
+    .filter(Boolean)
+  return {
+    enabled: r.enabled === true,
+    goLive: typeof r.goLive === 'boolean' ? r.goLive : d.goLive,
+    intervalMinutes: clampInt(r.intervalMinutes, 5, 1440, d.intervalMinutes),
+    goal: str(r.goal, d.goal),
+    categories: Array.isArray(r.categories) ? categories : d.categories,
+    postLanguage: postLanguageMode(r.postLanguage, d.postLanguage),
+    toneNotes: str(r.toneNotes, ''),
+    maxPostsPerDay: clampInt(r.maxPostsPerDay, 1, 96, d.maxPostsPerDay),
+    maxPostsPerRun: clampInt(r.maxPostsPerRun, 1, 10, d.maxPostsPerRun),
+    originalRatio: clampInt(r.originalRatio, 0, 100, d.originalRatio),
+    agentName: str(r.agentName, '').slice(0, 80),
+    creatorName: str(r.creatorName, '').slice(0, 120),
+    creatorHandle: str(r.creatorHandle, '').trim().replace(/^@+/, '').slice(0, 80),
+    creatorAddress: str(r.creatorAddress, d.creatorAddress).slice(0, 60),
+    replyToAll: typeof r.replyToAll === 'boolean' ? r.replyToAll : d.replyToAll,
+    autoReply: typeof r.autoReply === 'boolean' ? r.autoReply : d.autoReply,
+    maxRepliesPerRun: clampInt(r.maxRepliesPerRun, 1, 25, d.maxRepliesPerRun),
+    maxRepliesPerDay: clampInt(r.maxRepliesPerDay, 1, 300, d.maxRepliesPerDay),
   }
 }
 

@@ -255,7 +255,7 @@ export default function SettingsView() {
   const removeTopic = (topic: string) =>
     edit((f) => ({ ...f, topics: f.topics.filter((t) => t !== topic) }))
 
-  const toggleBuiltInSource = (key: 'google' | 'hackerNews' | 'naver', enabled: boolean) =>
+  const toggleBuiltInSource = (key: 'google' | 'yahoo' | 'hackerNews' | 'naver', enabled: boolean) =>
     setNewsSources((sources) => ({ ...sources, [key]: enabled }))
 
   const addCustomSource = () => {
@@ -678,6 +678,17 @@ export default function SettingsView() {
               <label className="toggle source-toggle">
                 <input
                   type="checkbox"
+                  checked={form.newsSources.yahoo}
+                  onChange={(e) => toggleBuiltInSource('yahoo', e.target.checked)}
+                />
+                <span>
+                  <strong>Yahoo News</strong>
+                  <span className="hint">Yahoo News search results (global).</span>
+                </span>
+              </label>
+              <label className="toggle source-toggle">
+                <input
+                  type="checkbox"
                   checked={form.newsSources.hackerNews}
                   onChange={(e) => toggleBuiltInSource('hackerNews', e.target.checked)}
                 />
@@ -804,7 +815,12 @@ export default function SettingsView() {
             <div className="section-title">Automation</div>
             <div className="section-desc">
               Periodically pulls fresh news for your topics and drafts posts for review. Scheduled posts
-              publish automatically; drafts always wait for your review.
+              publish automatically; drafts always wait for your review. For a fully autonomous agent that
+              decides, posts, and replies on its own, see{' '}
+              <button className="link" data-view="autopilot" onClick={() => setView('autopilot')}>
+                Full-Auto
+              </button>
+              .
             </div>
             <div className="field">
               <label className="toggle">

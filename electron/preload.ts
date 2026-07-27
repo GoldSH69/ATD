@@ -17,7 +17,12 @@ contextBridge.exposeInMainWorld('api', {
   draftUpsert: (draft: unknown) => ipcRenderer.invoke('drafts:upsert', draft),
   draftDelete: (id: string) => ipcRenderer.invoke('drafts:delete', id),
   draftPostNow: (id: string) => ipcRenderer.invoke('drafts:post-now', id),
+  autopilotStatus: () => ipcRenderer.invoke('autopilot:status'),
+  autopilotSetRunning: (running: boolean) => ipcRenderer.invoke('autopilot:set-running', running),
+  autopilotRunNow: () => ipcRenderer.invoke('autopilot:run-now'),
   openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
   onDraftsChanged: (cb: (drafts: unknown) => void) =>
     ipcRenderer.on('drafts:changed', (_e, drafts) => cb(drafts)),
+  onAutopilotStatus: (cb: (status: unknown) => void) =>
+    ipcRenderer.on('autopilot:status', (_e, status) => cb(status)),
 })

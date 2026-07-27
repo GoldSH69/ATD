@@ -2,7 +2,7 @@ import type { LanguageCode } from './types'
 
 export const L = {
   en: {
-    drafts: 'Drafts', news: 'News', replies: 'Replies', queue: 'Queue', settings: 'Settings',
+    drafts: 'Drafts', news: 'News', replies: 'Replies', queue: 'Queue', auto: 'Auto', settings: 'Settings',
     light: 'Light mode', dark: 'Dark mode', newDraft: 'New draft', failed: 'failed',
     noDrafts: 'No drafts yet. Generate from News, answer Replies, or start one from scratch.',
     selectDraft: 'Select a draft to review', chars: 'chars', word: 'word', words: 'words',
@@ -21,7 +21,7 @@ export const L = {
     configured: 'configured', notConfigured: 'not configured', scheduled: 'scheduled', posted: 'posted', total: 'total',
   },
   es: {
-    drafts: 'Borradores', news: 'Noticias', replies: 'Respuestas', queue: 'Cola', settings: 'Ajustes',
+    drafts: 'Borradores', news: 'Noticias', replies: 'Respuestas', queue: 'Cola', auto: 'Auto', settings: 'Ajustes',
     light: 'Modo claro', dark: 'Modo oscuro', newDraft: 'Nuevo borrador', failed: 'fallidos',
     noDrafts: 'Aun no hay borradores. Genera desde Noticias, responde en Respuestas o empieza uno nuevo.',
     selectDraft: 'Selecciona un borrador para revisar', chars: 'caracteres', word: 'palabra', words: 'palabras',
@@ -40,7 +40,7 @@ export const L = {
     configured: 'configurado', notConfigured: 'sin configurar', scheduled: 'programados', posted: 'publicado', total: 'total',
   },
   ko: {
-    drafts: '초안', news: '뉴스', replies: '답글', queue: '대기열', settings: '설정',
+    drafts: '초안', news: '뉴스', replies: '답글', queue: '대기열', auto: '자동', settings: '설정',
     light: '라이트 모드', dark: '다크 모드', newDraft: '새 초안', failed: '실패',
     noDrafts: '아직 초안이 없습니다. 뉴스에서 생성하거나 답글을 작성하거나 새로 시작하세요.',
     selectDraft: '검토할 초안을 선택하세요', chars: '자', word: '단어', words: '단어',
@@ -59,7 +59,7 @@ export const L = {
     configured: '설정됨', notConfigured: '미설정', scheduled: '예약됨', posted: '게시됨', total: '전체',
   },
   zh: {
-    drafts: '草稿', news: '新闻', replies: '回复', queue: '队列', settings: '设置',
+    drafts: '草稿', news: '新闻', replies: '回复', queue: '队列', auto: '自动', settings: '设置',
     light: '浅色模式', dark: '深色模式', newDraft: '新草稿', failed: '失败',
     noDrafts: '还没有草稿。可从新闻生成、回复消息，或从空白开始。',
     selectDraft: '选择草稿进行检查', chars: '字符', word: '词', words: '词',
@@ -78,7 +78,7 @@ export const L = {
     configured: '已配置', notConfigured: '未配置', scheduled: '已计划', posted: '已发布', total: '总计',
   },
   ja: {
-    drafts: '下書き', news: 'ニュース', replies: '返信', queue: 'キュー', settings: '設定',
+    drafts: '下書き', news: 'ニュース', replies: '返信', queue: 'キュー', auto: '自動', settings: '設定',
     light: 'ライトモード', dark: 'ダークモード', newDraft: '新規下書き', failed: '失敗',
     noDrafts: '下書きはまだありません。ニュースから生成、返信、または新規作成できます。',
     selectDraft: '確認する下書きを選択', chars: '文字', word: '語', words: '語',
@@ -97,7 +97,7 @@ export const L = {
     configured: '設定済み', notConfigured: '未設定', scheduled: '予約済み', posted: '公開済み', total: '合計',
   },
   fr: {
-    drafts: 'Brouillons', news: 'Actualites', replies: 'Reponses', queue: 'File', settings: 'Reglages',
+    drafts: 'Brouillons', news: 'Actualites', replies: 'Reponses', queue: 'File', auto: 'Auto', settings: 'Reglages',
     light: 'Mode clair', dark: 'Mode sombre', newDraft: 'Nouveau brouillon', failed: 'echoues',
     noDrafts: 'Aucun brouillon. Generez depuis Actualites, repondez, ou commencez de zero.',
     selectDraft: 'Selectionnez un brouillon a relire', chars: 'caracteres', word: 'mot', words: 'mots',
@@ -116,7 +116,7 @@ export const L = {
     configured: 'configure', notConfigured: 'non configure', scheduled: 'planifiees', posted: 'publie', total: 'total',
   },
   de: {
-    drafts: 'Entwürfe', news: 'Nachrichten', replies: 'Antworten', queue: 'Warteschlange', settings: 'Einstellungen',
+    drafts: 'Entwürfe', news: 'Nachrichten', replies: 'Antworten', queue: 'Warteschlange', auto: 'Auto', settings: 'Einstellungen',
     light: 'Heller Modus', dark: 'Dunkler Modus', newDraft: 'Neuer Entwurf', failed: 'fehlgeschlagen',
     noDrafts: 'Noch keine Entwürfe. Aus Nachrichten generieren, Antworten verfassen oder neu starten.',
     selectDraft: 'Entwurf zur Prüfung auswählen', chars: 'Zeichen', word: 'Wort', words: 'Wörter',
@@ -135,7 +135,7 @@ export const L = {
     configured: 'konfiguriert', notConfigured: 'nicht konfiguriert', scheduled: 'geplant', posted: 'veröffentlicht', total: 'gesamt',
   },
   pt: {
-    drafts: 'Rascunhos', news: 'Noticias', replies: 'Respostas', queue: 'Fila', settings: 'Configuracoes',
+    drafts: 'Rascunhos', news: 'Noticias', replies: 'Respostas', queue: 'Fila', auto: 'Auto', settings: 'Configuracoes',
     light: 'Modo claro', dark: 'Modo escuro', newDraft: 'Novo rascunho', failed: 'falhou',
     noDrafts: 'Ainda nao ha rascunhos. Gere em Noticias, responda, ou comece do zero.',
     selectDraft: 'Selecione um rascunho para revisar', chars: 'caracteres', word: 'palavra', words: 'palavras',

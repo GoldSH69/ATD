@@ -109,6 +109,48 @@ async function fetchGoogleNews(topic: string, mode: NewsMode): Promise<NewsItem[
   }
 }
 
+async function fetchYahooNews(topic: string, mode: NewsMode): Promise<NewsItem[]> {
+  const q = topic.trim()
+  if (!q) return []
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const search = googleSearchQuery(q, mode)
+    const url = `https://news.search.yahoo.com/rss?p=${encodeURIComponent(search)}`
+    const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: ctrl.signal })
+    if (!res.ok) return []
+    // Body is consumed inside the same timeout window so a stalled stream cannot hang.
+    const xml = await res.text()
+    const items: NewsItem[] = []
+    const seen = new Set<string>()
+    const itemRe = /<item>([\s\S]*?)<\/item>/g
+    let m: RegExpExecArray | null
+    while ((m = itemRe.exec(xml)) !== null && items.length < SOURCE_LIMIT) {
+      const block = m[1]
+      const title = tagText(block, 'title')
+      const link = resolveUrl(tagText(block, 'link'))
+      if (!title || !link) continue
+      const key = normalizeStoryUrl(link)
+      if (seen.has(key)) continue
+      seen.add(key)
+      const pubDate = tagText(block, 'pubDate')
+      const parsed = pubDate ? Date.parse(pubDate) : NaN
+      items.push({
+        title,
+        link,
+        source: tagText(block, 'source') || 'Yahoo News',
+        publishedAt: Number.isFinite(parsed) ? parsed : null,
+        topic: q,
+      })
+    }
+    return items
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function fetchNaverNews(topic: string): Promise<NewsItem[]> {
   const q = topic.trim()
   if (!q) return []
@@ -289,7 +331,7 @@ async function fetchCustomSource(source: NewsSourceSettings['custom'][number], t
 }
 
 function defaultSources(): NewsSourceSettings {
-  return { google: true, hackerNews: true, naver: false, custom: [] }
+  return { google: true, yahoo: false, hackerNews: true, naver: false, custom: [] }
 }
 
 function mergeNews(sources: NewsItem[][]): NewsItem[] {
@@ -316,6 +358,7 @@ export async function fetchTopicNews(input: string | NewsFetchInput): Promise<Ne
   if (!q) return []
   const jobs: Promise<NewsItem[]>[] = []
   if (sources.google) jobs.push(fetchGoogleNews(q, mode))
+  if (sources.yahoo) jobs.push(fetchYahooNews(q, mode))
   if (sources.hackerNews && shouldSearchHackerNews(q, mode)) jobs.push(fetchHackerNews(q))
   if (sources.naver) jobs.push(fetchNaverNews(q))
   for (const source of sources.custom.filter((s) => s.enabled)) jobs.push(fetchCustomSource(source, q))

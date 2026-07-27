@@ -9,7 +9,14 @@ import { fetchTopicNews } from './news'
 import { generateImageKeywords, searchImages } from './images'
 import { allDrafts, upsertDraft, deleteDraft, setDraftsChangedListener } from './drafts'
 import { startScheduler, postDraftNow } from './scheduler'
-import type { AppSettings, Draft, LlmSettings } from './types'
+import {
+  startAutopilot,
+  buildAutopilotStatus,
+  runAutopilotNow,
+  setAutopilotStatusListener,
+} from './autopilot'
+import { db } from './localdb'
+import type { AppSettings, AutopilotStatus, Draft, LlmSettings } from './types'
 
 // Two instances would race the scheduler and drafts store on the same files.
 if (!app.requestSingleInstanceLock()) {
@@ -68,10 +75,31 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  const broadcastAutopilot = (status: AutopilotStatus): void => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.webContents.isDestroyed()) win.webContents.send('autopilot:status', status)
+    }
+  }
+
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:set', async (_e, settings: AppSettings) => {
     await setSettings(settings)
+    // Config (interval, caps, goal, persona) may have changed — refresh the UI status.
+    broadcastAutopilot(buildAutopilotStatus())
   })
+
+  ipcMain.handle('autopilot:status', () => buildAutopilotStatus())
+  ipcMain.handle('autopilot:set-running', async (_e, running: boolean) => {
+    const settings = getSettings()
+    await setSettings({ ...settings, autopilot: { ...settings.autopilot, enabled: running === true } })
+    // Launching clears the last-run stamp so the first pass fires on the next tick
+    // (within ~30s) instead of waiting a full interval.
+    if (running === true) await db.set('autopilotLastRun', 0)
+    const status = buildAutopilotStatus()
+    broadcastAutopilot(status)
+    return status
+  })
+  ipcMain.handle('autopilot:run-now', () => runAutopilotNow())
 
   ipcMain.handle('llm:test', (_e, llm: LlmSettings) => testLlm(llm))
   ipcMain.handle('llm:generate-post', (_e, input: Parameters<typeof generatePostDraft>[0]) =>
@@ -150,9 +178,11 @@ app.whenReady().then(() => {
       if (!win.webContents.isDestroyed()) win.webContents.send('drafts:changed', drafts)
     }
   })
+  setAutopilotStatusListener(broadcastAutopilot)
 
   createWindow()
   startScheduler()
+  startAutopilot()
 
   app.on('second-instance', () => {
     const win = BrowserWindow.getAllWindows()[0]

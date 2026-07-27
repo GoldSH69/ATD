@@ -4,6 +4,8 @@ import { shellText } from '../i18n'
 export default function StatusBar() {
   const settings = useApp((s) => s.settings)
   const drafts = useApp((s) => s.drafts)
+  const autopilot = useApp((s) => s.autopilot)
+  const setView = useApp((s) => s.setView)
   if (!settings) return null
   const text = shellText(settings.language)
 
@@ -39,6 +41,17 @@ export default function StatusBar() {
         Threads: {threadsReady ? settings.threads.username ? `@${settings.threads.username}` : text.configured : text.notConfigured}
       </span>
       <span className="grow" />
+      {autopilot?.running && (
+        <button
+          className="status-item link"
+          onClick={() => setView('autopilot')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}
+        >
+          <span className="side-live inline" />
+          {text.auto}
+          {autopilot.busy ? ' ·' : ''} {autopilot.postsToday}/{autopilot.maxPostsPerDay}
+        </button>
+      )}
       {failed > 0 && <span className="status-item">{failed} {text.failed}</span>}
       <span className="status-item">{scheduled} {text.scheduled}</span>
       <span className="status-item">{drafts.length} {text.total}</span>

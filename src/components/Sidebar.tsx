@@ -8,6 +8,7 @@ const NAV: { id: ViewId; label: string }[] = [
   { id: 'news', label: 'News' },
   { id: 'replies', label: 'Replies' },
   { id: 'queue', label: 'Queue' },
+  { id: 'autopilot', label: 'Auto' },
 ]
 
 export default function Sidebar() {
@@ -15,6 +16,7 @@ export default function Sidebar() {
   const setView = useApp((s) => s.setView)
   const drafts = useApp((s) => s.drafts)
   const settings = useApp((s) => s.settings)
+  const autopilot = useApp((s) => s.autopilot)
   const saveSettings = useApp((s) => s.saveSettings)
   const text = shellText(settings?.language)
 
@@ -28,6 +30,17 @@ export default function Sidebar() {
 
   const countFor = (id: ViewId) =>
     id === 'drafts' ? draftCount : id === 'queue' ? queueCount : 0
+
+  const labelFor = (id: ViewId): string =>
+    id === 'drafts'
+      ? text.drafts
+      : id === 'news'
+        ? text.news
+        : id === 'replies'
+          ? text.replies
+          : id === 'autopilot'
+            ? text.auto
+            : text.queue
 
   return (
     <aside className="sidebar">
@@ -43,7 +56,10 @@ export default function Sidebar() {
             data-view={item.id}
             onClick={() => setView(item.id)}
           >
-            <span>{item.id === 'drafts' ? text.drafts : item.id === 'news' ? text.news : item.id === 'replies' ? text.replies : text.queue}</span>
+            <span>{labelFor(item.id)}</span>
+            {item.id === 'autopilot' && autopilot?.running && (
+              <span className="side-live" title="Full-Auto running" />
+            )}
             {countFor(item.id) > 0 && <span className="side-count">{countFor(item.id)}</span>}
           </button>
         ))}

@@ -6,7 +6,8 @@ export type LanguageCode = 'en' | 'es' | 'ko' | 'zh' | 'ja' | 'fr' | 'de' | 'pt'
 export type LlmProviderKind = 'claude' | 'openai' | 'gemini' | 'local' | 'other'
 export type DraftKind = 'post' | 'reply'
 export type DraftStatus = 'draft' | 'scheduled' | 'posting' | 'posted' | 'failed'
-export type ViewId = 'drafts' | 'news' | 'replies' | 'queue' | 'settings'
+export type ViewId = 'drafts' | 'news' | 'replies' | 'queue' | 'autopilot' | 'settings'
+export type PostLanguageMode = 'match' | 'ko' | 'en' | 'ui'
 
 export interface LlmSettings {
   provider: LlmProviderKind
@@ -39,6 +40,54 @@ export interface AutoDraftSettings {
   maxPerRun: number
 }
 
+/** Full-Auto ("autopilot") mode: the agent decides and acts on its own. */
+export interface AutopilotSettings {
+  enabled: boolean
+  goLive: boolean
+  intervalMinutes: number
+  goal: string
+  categories: string[]
+  postLanguage: PostLanguageMode
+  toneNotes: string
+  maxPostsPerDay: number
+  maxPostsPerRun: number
+  originalRatio: number
+  agentName: string
+  creatorName: string
+  creatorHandle: string
+  creatorAddress: string
+  replyToAll: boolean
+  autoReply: boolean
+  maxRepliesPerRun: number
+  maxRepliesPerDay: number
+}
+
+export type AutopilotLogKind = 'post' | 'reply' | 'skip' | 'error' | 'info'
+
+export interface AutopilotLogEntry {
+  id: string
+  at: number
+  kind: AutopilotLogKind
+  message: string
+  permalink?: string
+}
+
+export interface AutopilotStatus {
+  running: boolean
+  goLive: boolean
+  busy: boolean
+  postsToday: number
+  maxPostsPerDay: number
+  repliesToday: number
+  maxRepliesPerDay: number
+  intervalMinutes: number
+  lastRunAt: number | null
+  nextRunAt: number | null
+  llmReady: boolean
+  threadsReady: boolean
+  log: AutopilotLogEntry[]
+}
+
 export interface CustomNewsSource {
   id: string
   name: string
@@ -48,6 +97,7 @@ export interface CustomNewsSource {
 
 export interface NewsSourceSettings {
   google: boolean
+  yahoo: boolean
   hackerNews: boolean
   naver: boolean
   custom: CustomNewsSource[]
@@ -63,6 +113,7 @@ export interface AppSettings {
   threads: ThreadsSettings
   style: StyleSettings
   autoDraft: AutoDraftSettings
+  autopilot: AutopilotSettings
 }
 
 export interface Draft {
@@ -165,11 +216,47 @@ export interface BridgeApi {
   draftUpsert(draft: Draft): Promise<Draft[]>
   draftDelete(id: string): Promise<Draft[]>
   draftPostNow(id: string): Promise<{ ok: boolean; message: string; drafts: Draft[] }>
+  autopilotStatus(): Promise<AutopilotStatus>
+  autopilotSetRunning(running: boolean): Promise<AutopilotStatus>
+  autopilotRunNow(): Promise<AutopilotStatus>
   openExternal(url: string): Promise<void>
   onDraftsChanged(cb: (drafts: Draft[]) => void): void
+  onAutopilotStatus(cb: (status: AutopilotStatus) => void): void
 }
 
 export const DEFAULT_TOPICS = ['artificial intelligence', 'technology', 'startups']
+
+/** Niche categories the autopilot can post about. label is the search seed;
+ *  ko is the Korean display name for the picker. */
+export const AUTOPILOT_CATEGORIES: { id: string; en: string; ko: string }[] = [
+  { id: 'technology', en: 'Technology', ko: '기술' },
+  { id: 'ai', en: 'AI', ko: 'AI' },
+  { id: 'development', en: 'Development', ko: '개발' },
+  { id: 'startups', en: 'Startups', ko: '스타트업' },
+  { id: 'finance', en: 'Finance', ko: '금융' },
+  { id: 'business', en: 'Business', ko: '비즈니스' },
+  { id: 'crypto', en: 'Crypto', ko: '암호화폐' },
+  { id: 'science', en: 'Science', ko: '과학' },
+  { id: 'health', en: 'Health', ko: '건강' },
+  { id: 'fitness', en: 'Fitness', ko: '피트니스' },
+  { id: 'fashion', en: 'Fashion', ko: '패션' },
+  { id: 'beauty', en: 'Beauty', ko: '뷰티' },
+  { id: 'lifestyle', en: 'Lifestyle', ko: '라이프스타일' },
+  { id: 'food', en: 'Food', ko: '음식' },
+  { id: 'travel', en: 'Travel', ko: '여행' },
+  { id: 'sports', en: 'Sports', ko: '스포츠' },
+  { id: 'gaming', en: 'Gaming', ko: '게임' },
+  { id: 'entertainment', en: 'Entertainment', ko: '엔터테인먼트' },
+  { id: 'music', en: 'Music', ko: '음악' },
+  { id: 'movies', en: 'Movies & TV', ko: '영화·드라마' },
+  { id: 'books', en: 'Books', ko: '책' },
+  { id: 'design', en: 'Design', ko: '디자인' },
+  { id: 'marketing', en: 'Marketing', ko: '마케팅' },
+  { id: 'productivity', en: 'Productivity', ko: '생산성' },
+  { id: 'environment', en: 'Environment', ko: '환경' },
+  { id: 'education', en: 'Education', ko: '교육' },
+  { id: 'humor', en: 'Humor & Memes', ko: '유머·밈' },
+]
 
 export const LLM_DEFAULTS = {
   claudeModel: 'claude-sonnet-5',

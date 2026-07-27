@@ -46,6 +46,56 @@ export interface AutoDraftSettings {
   maxPerRun: number
 }
 
+export type PostLanguageMode = 'match' | 'ko' | 'en' | 'ui'
+
+/** Full-Auto ("autopilot") mode: the agent decides and acts on its own. */
+export interface AutopilotSettings {
+  enabled: boolean            // Full-Auto is launched and running
+  goLive: boolean             // publish for real; when false, decisions become drafts only
+  intervalMinutes: number     // how often the agent "thinks"
+  goal: string                // what the agent is trying to achieve
+  categories: string[]        // niches the agent posts about
+  postLanguage: PostLanguageMode
+  toneNotes: string           // optional extra personality guidance
+  maxPostsPerDay: number
+  maxPostsPerRun: number
+  originalRatio: number       // 0-100: how often to post original/funny vs news reactions
+  agentName: string           // the agent's persona name
+  creatorName: string         // "an AI agent created by ___"
+  creatorHandle: string       // the creator's Threads @handle (without @)
+  creatorAddress: string      // how to address the creator, e.g. "Master"
+  replyToAll: boolean         // scan and answer unanswered replies
+  autoReply: boolean          // publish replies for real vs draft them
+  maxRepliesPerRun: number
+  maxRepliesPerDay: number
+}
+
+export type AutopilotLogKind = 'post' | 'reply' | 'skip' | 'error' | 'info'
+
+export interface AutopilotLogEntry {
+  id: string
+  at: number
+  kind: AutopilotLogKind
+  message: string
+  permalink?: string
+}
+
+export interface AutopilotStatus {
+  running: boolean
+  goLive: boolean
+  busy: boolean
+  postsToday: number
+  maxPostsPerDay: number
+  repliesToday: number
+  maxRepliesPerDay: number
+  intervalMinutes: number
+  lastRunAt: number | null
+  nextRunAt: number | null
+  llmReady: boolean
+  threadsReady: boolean
+  log: AutopilotLogEntry[]
+}
+
 export interface CustomNewsSource {
   id: string
   name: string
@@ -55,6 +105,7 @@ export interface CustomNewsSource {
 
 export interface NewsSourceSettings {
   google: boolean
+  yahoo: boolean
   hackerNews: boolean
   naver: boolean
   custom: CustomNewsSource[]
@@ -70,6 +121,7 @@ export interface AppSettings {
   threads: ThreadsSettings
   style: StyleSettings
   autoDraft: AutoDraftSettings
+  autopilot: AutopilotSettings
 }
 
 export interface Draft {

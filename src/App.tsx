@@ -7,6 +7,7 @@ import DraftsView from './components/DraftsView'
 import NewsView from './components/NewsView'
 import RepliesView from './components/RepliesView'
 import QueueView from './components/QueueView'
+import AutopilotView from './components/AutopilotView'
 import SettingsView from './components/SettingsView'
 import Onboarding from './components/Onboarding'
 
@@ -32,6 +33,7 @@ export default function App() {
         {view === 'news' && <NewsView />}
         {view === 'replies' && <RepliesView />}
         {view === 'queue' && <QueueView />}
+        {view === 'autopilot' && <AutopilotView />}
         {view === 'settings' && <SettingsView />}
       </main>
       <StatusBar />
