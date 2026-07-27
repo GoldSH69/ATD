@@ -1,7 +1,7 @@
 import { db } from './localdb'
 import { getSettings } from './settings'
 import { fetchTopicNews } from './news'
-import { fetchUnansweredEngagement } from './threadsApi'
+import { fetchUnansweredEngagement, searchKeywordPosts } from './threadsApi'
 import { allDrafts, upsertDraft } from './drafts'
 import { postDraftNow } from './scheduler'
 import {
@@ -35,6 +35,9 @@ const AP_LAST_REPLY_RUN = 'autopilotLastReplyRun' // last replies+mentions pass
 const AP_LOG = 'autopilotLog'
 const AP_USED_LINKS = 'autopilotUsedLinks'
 const AP_ANSWERED = 'autopilotAnswered'
+const AP_DISCOVER_ANSWERED = 'autopilotDiscoverAnswered'
+const AP_DISCOVER_DAY = 'autopilotDiscoverDay'
+const AP_DISCOVER_COUNT = 'autopilotDiscoverToday'
 const LOG_LIMIT = 80
 
 /**
@@ -146,7 +149,7 @@ export function buildAutopilotStatus(): AutopilotStatus {
   const replies = sameDay ? getInt(AP_REPLIES) : 0
   const lastRunAt = db.get<number>(AP_LAST_RUN) ?? null
   const lastReplyRunAt = db.get<number>(AP_LAST_REPLY_RUN) ?? null
-  const repliesEnabled = ap.replyToAll || ap.replyToMentions
+  const repliesEnabled = ap.replyToAll || ap.replyToMentions || ap.engageDiscover
   const nextRunAt = ap.enabled
     ? (typeof lastRunAt === 'number' ? lastRunAt : Date.now()) + ap.intervalMinutes * 60_000
     : null
@@ -198,7 +201,8 @@ async function maybeTick(): Promise<void> {
   const lastReply = db.get<number>(AP_LAST_REPLY_RUN) ?? 0
   // lastRun === 0 means "fire now" (launch / forced reset)
   const duePosts = !postBusy && (lastPost === 0 || now - lastPost >= ap.intervalMinutes * 60_000)
-  const repliesOn = ap.replyToAll || ap.replyToMentions
+  // Reply timer also drives @mentions and optional discover engagement.
+  const repliesOn = ap.replyToAll || ap.replyToMentions || ap.engageDiscover
   const dueReplies =
     !replyBusy &&
     repliesOn &&
@@ -276,6 +280,15 @@ async function runPostPhase(postsToday: number): Promise<number> {
   if (budget <= 0) {
     log('skip', `Daily post budget reached (${postsToday}/${ap.maxPostsPerDay}).`)
     return 0
+  }
+
+  // "Here and there" — randomly skip some ticks so the account doesn't post like a clock.
+  if (ap.sporadicPosts) {
+    // ~45% chance to skip this post tick (still runs replies/mentions separately).
+    if (Math.random() < 0.45) {
+      log('skip', 'Sporadic posts: sitting this one out (looks more human).')
+      return 0
+    }
   }
 
   const rich = await gatherCandidates()
@@ -367,8 +380,8 @@ async function fetchReplyContext(replyText: string, rootText: string): Promise<s
 async function runReplyPhase(repliesToday: number): Promise<number> {
   const settings = getSettings()
   const ap = settings.autopilot
-  if (!ap.replyToAll && !ap.replyToMentions) {
-    log('skip', 'Reply scanning is off (enable replies and/or @mentions in Auto settings).')
+  if (!ap.replyToAll && !ap.replyToMentions && !ap.engageDiscover) {
+    log('skip', 'Reply scanning is off (enable replies, @mentions, and/or discover).')
     return 0
   }
   const remainingDay = ap.maxRepliesPerDay - repliesToday
@@ -377,32 +390,39 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
     return 0
   }
 
-  let replies
-  try {
-    // Mentions need threads_manage_mentions on the token; failures degrade to replies-only.
-    log('info', `Scanning replies${ap.replyToMentions ? ' + @mentions' : ''}…`)
-    const fetched = await fetchUnansweredEngagement(settings.threads, {
-      includeMentions: ap.replyToMentions,
-    })
-    if (fetched.mentionError) {
-      log('error', fetched.mentionError)
-    }
-    replies = fetched.replies
-  } catch (err) {
-    log('error', `Could not fetch replies/mentions: ${err instanceof Error ? err.message : String(err)}`)
-    await scheduleRetry('reply')
-    return 0
-  }
+  let sent = 0
+  let failures = 0
+  let replies: Awaited<ReturnType<typeof fetchUnansweredEngagement>>['replies'] = []
 
-  // Filter by enabled engagement types.
-  replies = replies.filter((r) => {
-    const kind = r.kind ?? 'reply'
-    if (kind === 'mention') return ap.replyToMentions
-    return ap.replyToAll
-  })
-  const mentionN = replies.filter((r) => r.kind === 'mention').length
-  const replyN = replies.length - mentionN
-  log('info', `Inbox: ${replyN} unanswered reply(ies), ${mentionN} @mention(s).`)
+  if (ap.replyToAll || ap.replyToMentions) {
+    try {
+      log('info', `Scanning replies${ap.replyToMentions ? ' + @mentions' : ''}…`)
+      const fetched = await fetchUnansweredEngagement(settings.threads, {
+        includeMentions: ap.replyToMentions,
+      })
+      if (fetched.mentionError) {
+        log('error', fetched.mentionError)
+      }
+      replies = fetched.replies
+    } catch (err) {
+      log('error', `Could not fetch replies/mentions: ${err instanceof Error ? err.message : String(err)}`)
+      await scheduleRetry('reply')
+      // Still try discover if enabled.
+      if (ap.engageDiscover) {
+        return runDiscoverPhase(repliesToday)
+      }
+      return 0
+    }
+
+    replies = replies.filter((r) => {
+      const kind = r.kind ?? 'reply'
+      if (kind === 'mention') return ap.replyToMentions
+      return ap.replyToAll
+    })
+    const mentionN = replies.filter((r) => r.kind === 'mention').length
+    const replyN = replies.length - mentionN
+    log('info', `Inbox: ${replyN} unanswered reply(ies), ${mentionN} @mention(s).`)
+  }
 
   const answered = new Set((db.get<string[]>(AP_ANSWERED) ?? []).filter((x) => typeof x === 'string'))
   // Only block targets we already successfully posted (or are posting right now).
@@ -419,8 +439,6 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
   )
   const handle = ap.creatorHandle.trim().toLowerCase()
   const budget = Math.min(ap.maxRepliesPerRun, remainingDay)
-  let sent = 0
-  let failures = 0
 
   log('info', `Found ${replies.length} candidate reply/mention(s).`)
 
@@ -503,6 +521,121 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
     await delay(800)
   }
   if (sent === 0 && failures === 0) log('info', 'No new replies or mentions to answer.')
+  if (failures > 0) await scheduleRetry('reply')
+
+  // Optional: join random public threads in your niches (keyword search).
+  if (ap.engageDiscover) {
+    const discovered = await runDiscoverPhase(repliesToday + sent)
+    sent += discovered
+  }
+  return sent
+}
+
+/** Reply to a few random public posts found via keyword search in configured niches. */
+async function runDiscoverPhase(repliesTodaySoFar: number): Promise<number> {
+  const settings = getSettings()
+  const ap = settings.autopilot
+  if (!ap.engageDiscover || ap.maxDiscoverRepliesPerRun <= 0) return 0
+
+  const today = dayKey()
+  if (db.get<string>(AP_DISCOVER_DAY) !== today) {
+    void db.set(AP_DISCOVER_DAY, today)
+    void db.set(AP_DISCOVER_COUNT, 0)
+  }
+  const discoverToday = getInt(AP_DISCOVER_COUNT)
+  const remainingDiscover = ap.maxDiscoverRepliesPerDay - discoverToday
+  const remainingGlobal = ap.maxRepliesPerDay - repliesTodaySoFar
+  const budget = Math.min(ap.maxDiscoverRepliesPerRun, remainingDiscover, remainingGlobal)
+  if (budget <= 0) {
+    log('skip', 'Discover reply budget reached for today.')
+    return 0
+  }
+
+  const cats =
+    ap.categories.length > 0 ? ap.categories : ['ai', 'technology', 'startups', 'productivity']
+  // Pick 1–2 niche keywords for this tick.
+  const shuffled = [...cats].sort(() => Math.random() - 0.5).slice(0, 2)
+  const usedDiscover = new Set(
+    (db.get<string[]>(AP_DISCOVER_ANSWERED) ?? []).filter((x) => typeof x === 'string')
+  )
+  const myHandle = (settings.threads.username || '').toLowerCase()
+
+  const candidates: { id: string; text: string; username: string }[] = []
+  for (const cat of shuffled) {
+    const q = categoryQuery(cat) || cat
+    if (!q) continue
+    // Use a short keyword (first 1–3 words) for better search quality.
+    const keyword = q.split(/\s+/).slice(0, 3).join(' ')
+    const res = await searchKeywordPosts(settings.threads, keyword, 12)
+    if (!res.ok) {
+      log('error', `Discover search "${keyword}": ${res.message}`)
+      continue
+    }
+    for (const p of res.posts) {
+      if (usedDiscover.has(p.id)) continue
+      if (myHandle && p.username.toLowerCase() === myHandle) continue
+      candidates.push({ id: p.id, text: p.text, username: p.username })
+    }
+  }
+
+  if (candidates.length === 0) {
+    log('info', 'Discover: no fresh public posts found for this tick.')
+    return 0
+  }
+
+  // Random sample.
+  const picks = [...candidates].sort(() => Math.random() - 0.5).slice(0, budget)
+  log('info', `Discover: engaging ${picks.length} public post(s) in niches [${shuffled.join(', ')}].`)
+
+  let sent = 0
+  let failures = 0
+  for (const p of picks) {
+    const gen = await generateAutopilotReply({
+      replyText: p.text,
+      replyUsername: p.username,
+      rootPostText: p.text,
+      isCreator: false,
+      kind: 'discover',
+    })
+    if (!gen.ok) {
+      failures++
+      log('error', `Discover reply gen failed (@${p.username}): ${gen.message}`)
+      continue
+    }
+    const now = Date.now()
+    const draft: Draft = {
+      id: crypto.randomUUID(),
+      kind: 'reply',
+      text: gen.text,
+      replyToId: p.id,
+      replyToText: p.text,
+      replyToUsername: p.username,
+      topic: 'discover',
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+    }
+    const publish = ap.goLive && ap.autoReply
+    const res = await commitDraft(draft, publish)
+    usedDiscover.add(p.id)
+    void db.set(AP_DISCOVER_ANSWERED, [...usedDiscover].slice(-500))
+
+    if (!publish) {
+      sent++
+      log('reply', `Drafted discover reply to @${p.username}.`)
+    } else if (res.ok) {
+      sent++
+      log('reply', `Discover replied to @${p.username}.`, res.permalink)
+    } else {
+      failures++
+      log('error', `Discover publish failed (@${p.username}): ${res.message}`)
+    }
+    await delay(1000)
+  }
+  if (sent > 0) {
+    void db.set(AP_DISCOVER_COUNT, discoverToday + sent)
+    void db.set(AP_REPLIES, getInt(AP_REPLIES) + sent)
+  }
   if (failures > 0) await scheduleRetry('reply')
   return sent
 }

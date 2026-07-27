@@ -324,8 +324,8 @@ export interface AutopilotReplyInput {
   rootPostText: string
   contextText?: string
   isCreator: boolean
-  /** 'mention' = someone @mentioned you on their post; default is a reply on yours. */
-  kind?: 'reply' | 'mention'
+  /** 'mention' = @mention; 'discover' = cold reply on a public post; default = reply on yours. */
+  kind?: 'reply' | 'mention' | 'discover'
 }
 
 export async function generateAutopilotReply(input: AutopilotReplyInput): Promise<GenerateResult> {
@@ -334,12 +334,20 @@ export async function generateAutopilotReply(input: AutopilotReplyInput): Promis
   if (missing) return { ok: false, text: '', message: missing }
   const ap = settings.autopilot
   const parts: string[] = []
-  const isMention = input.kind === 'mention'
-  if (isMention) {
+  const kind = input.kind ?? 'reply'
+  if (kind === 'mention') {
     parts.push('Someone @mentioned you in a Threads post (not necessarily a reply on your own thread).')
     parts.push(`@${input.replyUsername} wrote: "${input.replyText}".`)
     parts.push(
       'Write a short, natural reply to that mention — acknowledge them, answer if they asked something, and stay in character. Do not restate the whole post.'
+    )
+  } else if (kind === 'discover') {
+    parts.push(
+      'You are joining a public Threads conversation (discovery engagement). This is NOT your post — you are a friendly stranger adding value.'
+    )
+    parts.push(`@${input.replyUsername} posted: "${input.rootPostText || input.replyText}".`)
+    parts.push(
+      'Write ONE short, human reply: a genuine take, helpful note, or light joke. No spam, no self-promo dump, no "check my profile". Sound native to Threads.'
     )
   } else {
     parts.push('Someone replied to your Threads post.')

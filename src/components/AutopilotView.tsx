@@ -28,6 +28,16 @@ export default function AutopilotView() {
         ? ap.replyIntervalMinutes
         : 5,
     replyToMentions: typeof ap.replyToMentions === 'boolean' ? ap.replyToMentions : true,
+    sporadicPosts: typeof ap.sporadicPosts === 'boolean' ? ap.sporadicPosts : true,
+    engageDiscover: typeof ap.engageDiscover === 'boolean' ? ap.engageDiscover : false,
+    maxDiscoverRepliesPerRun:
+      typeof ap.maxDiscoverRepliesPerRun === 'number' && Number.isFinite(ap.maxDiscoverRepliesPerRun)
+        ? ap.maxDiscoverRepliesPerRun
+        : 2,
+    maxDiscoverRepliesPerDay:
+      typeof ap.maxDiscoverRepliesPerDay === 'number' && Number.isFinite(ap.maxDiscoverRepliesPerDay)
+        ? ap.maxDiscoverRepliesPerDay
+        : 20,
   })
 
   const [form, setForm] = useState<AutopilotSettings>(() => withReplyDefaults(settings.autopilot))
@@ -486,6 +496,22 @@ export default function AutopilotView() {
                 )}
               </span>
             </div>
+            <div className="field">
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={form.sporadicPosts}
+                  onChange={(e) => edit({ sporadicPosts: e.target.checked })}
+                />
+                <span>{t('Post here and there (sporadic)', '여기저기 게시 (불규칙)')}</span>
+              </label>
+              <span className="hint">
+                {t(
+                  'When on, randomly skips some post ticks so you don’t publish like a metronome.',
+                  '켜면 게시 주기를 가끔 건너뛰어 시계처럼 올리지 않습니다.',
+                )}
+              </span>
+            </div>
           </div>
 
           {/* replies + mentions */}
@@ -493,8 +519,8 @@ export default function AutopilotView() {
             <div className="section-title">{t('Replies & mentions', '답글 · 멘션')}</div>
             <div className="section-desc">
               {t(
-                'Answer unanswered replies on your posts and/or @mentions of your account. Mentions need the threads_manage_mentions permission on your access token.',
-                '내 게시물의 미답변 답글과 계정 @멘션에 응대합니다. 멘션은 액세스 토큰에 threads_manage_mentions 권한이 필요합니다.'
+                'Answer unanswered replies on your posts and/or @mentions of your account. Mentions need threads_manage_mentions on the access token (regenerate the token after enabling the permission in Meta).',
+                '내 게시물 미답변 답글과 @멘션에 응대합니다. 멘션은 토큰에 threads_manage_mentions가 필요합니다 (Meta에서 권한 켠 뒤 토큰을 다시 발급하세요).'
               )}
             </div>
             <div className="field">
@@ -517,6 +543,54 @@ export default function AutopilotView() {
                 <span>{t('Reply to @mentions of me', '나를 @멘션한 글에 응대')}</span>
               </label>
             </div>
+            <div className="field">
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={form.engageDiscover}
+                  onChange={(e) => edit({ engageDiscover: e.target.checked })}
+                />
+                <span>{t('Reply to random public posts in my niches', '내 분야의 공개 글에 랜덤 답글')}</span>
+              </label>
+              <span className="hint">
+                {t(
+                  'Uses keyword search on your niches. Needs threads_keyword_search (public results need advanced access / app review). Cap discover replies below.',
+                  '주제 키워드 검색으로 공개 글에 답합니다. threads_keyword_search 필요 (공개 검색은 고급 액세스/앱 리뷰). 아래 한도를 설정하세요.',
+                )}
+              </span>
+            </div>
+            {form.engageDiscover && (
+              <div className="row">
+                <div className="field grow">
+                  <span className="field-label">{t('Discover max / run', '발견 답글 실행당')}</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={form.maxDiscoverRepliesPerRun}
+                    onChange={(e) => edit({ maxDiscoverRepliesPerRun: e.target.valueAsNumber })}
+                    onBlur={() =>
+                      edit({ maxDiscoverRepliesPerRun: num(form.maxDiscoverRepliesPerRun, 0, 10, 2) })
+                    }
+                  />
+                </div>
+                <div className="field grow">
+                  <span className="field-label">{t('Discover max / day', '발견 답글 하루')}</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={form.maxDiscoverRepliesPerDay}
+                    onChange={(e) => edit({ maxDiscoverRepliesPerDay: e.target.valueAsNumber })}
+                    onBlur={() =>
+                      edit({ maxDiscoverRepliesPerDay: num(form.maxDiscoverRepliesPerDay, 0, 100, 20) })
+                    }
+                  />
+                </div>
+              </div>
+            )}
             {(form.replyToAll || form.replyToMentions) && (
               <>
                 <div className="field">

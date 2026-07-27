@@ -267,6 +267,67 @@ export async function scrapeRecentTexts(cfg: ThreadsCfg, count: number): Promise
   return posts.map((p) => p.text).filter((t) => t.trim().length > 0).slice(0, n)
 }
 
+/** A public Threads post found via keyword search (for discovery engagement). */
+export interface DiscoverPost {
+  id: string
+  text: string
+  username: string
+  timestamp: string
+  permalink?: string
+}
+
+/**
+ * Search public Threads posts by keyword.
+ * Requires `threads_keyword_search`. Without advanced access, only the auth user's own posts return.
+ */
+export async function searchKeywordPosts(
+  cfg: ThreadsCfg,
+  keyword: string,
+  limit = 15
+): Promise<{ ok: boolean; posts: DiscoverPost[]; message: string }> {
+  const q = keyword.trim()
+  if (!q) return { ok: false, posts: [], message: 'Keyword is empty' }
+  const n = Math.max(1, Math.min(50, Math.floor(limit) || 15))
+  try {
+    // Endpoint is app-root level: /keyword_search (not under /me).
+    const data = await apiGet<{ data?: Array<Partial<DiscoverPost> & { is_reply?: boolean }> }>(
+      cfg,
+      '/keyword_search',
+      {
+        q,
+        search_type: 'RECENT',
+        search_mode: 'KEYWORD',
+        media_type: 'TEXT',
+        fields: 'id,text,username,timestamp,permalink,is_reply,has_replies',
+        limit: String(n),
+      }
+    )
+    const posts: DiscoverPost[] = []
+    for (const p of data.data ?? []) {
+      if (typeof p.id !== 'string' || !p.id) continue
+      if (p.is_reply === true) continue // prefer root posts for discovery replies
+      const text = typeof p.text === 'string' ? p.text.trim() : ''
+      if (!text) continue
+      posts.push({
+        id: p.id,
+        text,
+        username: typeof p.username === 'string' && p.username ? p.username : 'someone',
+        timestamp: typeof p.timestamp === 'string' ? p.timestamp : '',
+        permalink: typeof p.permalink === 'string' ? p.permalink : undefined,
+      })
+    }
+    return { ok: true, posts, message: `Found ${posts.length} post(s) for "${q}"` }
+  } catch (err) {
+    return {
+      ok: false,
+      posts: [],
+      message:
+        errText(err) +
+        ' (needs threads_keyword_search; public results need advanced access / app review)',
+    }
+  }
+}
+
 interface RawReply {
   id?: string
   text?: string

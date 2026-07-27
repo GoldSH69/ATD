@@ -70,6 +70,15 @@ export interface AutopilotSettings {
   autoReply: boolean          // publish replies for real vs draft them
   maxRepliesPerRun: number
   maxRepliesPerDay: number
+  /** Skip some post ticks at random so the feed feels less robotic ("here and there"). */
+  sporadicPosts: boolean
+  /**
+   * Reply to random public posts found via keyword search in your niches.
+   * Needs threads_keyword_search on the token (public results need advanced access).
+   */
+  engageDiscover: boolean
+  maxDiscoverRepliesPerRun: number
+  maxDiscoverRepliesPerDay: number
 }
 
 export type AutopilotLogKind = 'post' | 'reply' | 'skip' | 'error' | 'info'

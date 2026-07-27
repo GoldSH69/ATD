@@ -11,7 +11,7 @@ import type { AppSettings, AutopilotSettings, PostLanguageMode } from './types'
 
 const ENC_PREFIX = 'enc:v1:'
 const DEFAULT_THREADS_SCOPES =
-  'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies,threads_manage_mentions'
+  'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies,threads_manage_mentions,threads_keyword_search'
 
 export function defaultSettings(): AppSettings {
   return {
@@ -70,6 +70,10 @@ export function defaultAutopilot(): AutopilotSettings {
     autoReply: true,
     maxRepliesPerRun: 15, // allow multiple replies in an ongoing thread per tick
     maxRepliesPerDay: 100,
+    sporadicPosts: true, // post "here and there" instead of every single tick
+    engageDiscover: false, // opt-in: reply to random public posts in niches
+    maxDiscoverRepliesPerRun: 2,
+    maxDiscoverRepliesPerDay: 20,
   }
 }
 
@@ -80,6 +84,7 @@ function ensureMentionScope(scopes: string): string {
     .map((s) => s.trim())
     .filter(Boolean)
   if (!parts.includes('threads_manage_mentions')) parts.push('threads_manage_mentions')
+  if (!parts.includes('threads_keyword_search')) parts.push('threads_keyword_search')
   return parts.join(',')
 }
 
@@ -269,6 +274,10 @@ function normalizeAutopilot(
     autoReply: typeof r.autoReply === 'boolean' ? r.autoReply : d.autoReply,
     maxRepliesPerRun: clampInt(r.maxRepliesPerRun, 1, 25, d.maxRepliesPerRun),
     maxRepliesPerDay: clampInt(r.maxRepliesPerDay, 1, 300, d.maxRepliesPerDay),
+    sporadicPosts: typeof r.sporadicPosts === 'boolean' ? r.sporadicPosts : d.sporadicPosts,
+    engageDiscover: typeof r.engageDiscover === 'boolean' ? r.engageDiscover : d.engageDiscover,
+    maxDiscoverRepliesPerRun: clampInt(r.maxDiscoverRepliesPerRun, 0, 10, d.maxDiscoverRepliesPerRun),
+    maxDiscoverRepliesPerDay: clampInt(r.maxDiscoverRepliesPerDay, 0, 100, d.maxDiscoverRepliesPerDay),
   }
 }
 

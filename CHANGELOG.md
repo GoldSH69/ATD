@@ -9,6 +9,21 @@ Session-level notes also live under `_changelog/`.
 
 ---
 
+## [0.2.7] — 2026-07-27
+
+### Added
+
+- **Post here and there (sporadic)** toggle — randomly skips some post ticks so the account doesn’t publish on a metronome.
+- **Reply to random public posts in my niches** toggle — keyword-search discovery engagement (`threads_keyword_search`), with per-run/per-day discover caps. Opt-in.
+- Default OAuth scopes include `threads_keyword_search`.
+
+### Notes
+
+- Mentions need `threads_manage_mentions` **on the access token** (permission enabled in Meta is not enough — regenerate the token after enabling).
+- Public keyword search results need **advanced access** for `threads_keyword_search`; without it, search is limited to the auth user’s own posts.
+
+---
+
 ## [0.2.6] — 2026-07-27
 
 ### Fixed

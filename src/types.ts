@@ -62,6 +62,10 @@ export interface AutopilotSettings {
   autoReply: boolean
   maxRepliesPerRun: number
   maxRepliesPerDay: number
+  sporadicPosts: boolean
+  engageDiscover: boolean
+  maxDiscoverRepliesPerRun: number
+  maxDiscoverRepliesPerDay: number
 }
 
 export type AutopilotLogKind = 'post' | 'reply' | 'skip' | 'error' | 'info'
