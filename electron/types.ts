@@ -52,7 +52,8 @@ export type PostLanguageMode = 'match' | 'ko' | 'en' | 'ui'
 export interface AutopilotSettings {
   enabled: boolean            // Full-Auto is launched and running
   goLive: boolean             // publish for real; when false, decisions become drafts only
-  intervalMinutes: number     // how often the agent "thinks"
+  intervalMinutes: number     // how often the agent thinks about new posts
+  replyIntervalMinutes: number // how often it scans replies + @mentions (separate, usually faster)
   goal: string                // what the agent is trying to achieve
   categories: string[]        // niches the agent posts about
   postLanguage: PostLanguageMode
@@ -90,8 +91,11 @@ export interface AutopilotStatus {
   repliesToday: number
   maxRepliesPerDay: number
   intervalMinutes: number
+  replyIntervalMinutes: number
   lastRunAt: number | null
   nextRunAt: number | null
+  lastReplyRunAt: number | null
+  nextReplyRunAt: number | null
   llmReady: boolean
   threadsReady: boolean
   log: AutopilotLogEntry[]

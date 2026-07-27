@@ -17,9 +17,17 @@ class ThreadsApiError extends Error {
   }
 }
 
-const uid = (cfg: ThreadsCfg): string => cfg.userId.trim() || 'me'
+/** Prefer an explicit Threads user id; fall back to `me`. Wrong/stale user ids cause
+ *  "The requested resource does not exist" on create/publish. */
+const uid = (cfg: ThreadsCfg): string => {
+  const id = cfg.userId.trim()
+  // Threads media/user ids are numeric strings; reject obviously bad values.
+  if (id && /^\d+$/.test(id)) return id
+  return 'me'
+}
 const snippet = (body: string): string => body.replace(/\s+/g, ' ').trim().slice(0, 200) || '(empty body)'
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 async function apiFetch<T>(
   cfg: ThreadsCfg,
@@ -84,40 +92,89 @@ export async function testThreads(cfg: ThreadsCfg): Promise<TestResult & { usern
 }
 
 // Container may need a moment before threads_publish accepts it.
+// Meta often returns "does not exist" if publish runs immediately after create
+// (common for replies). Wait + retry; see Threads two-step publish docs.
 const isTransientPublishError = (err: unknown): boolean => {
-  const m = err instanceof Error ? err.message : String(err)
-  return /not ready|not found|not finished|not available|try again|temporarily/i.test(m)
+  const m = errText(err)
+  return /not ready|not found|not finished|not available|try again|temporarily|does not exist|in progress|processing/i.test(
+    m
+  )
 }
 
-async function publish(
+const isMissingResourceError = (err: unknown): boolean => {
+  const m = errText(err)
+  return /does not exist|invalid.*id|unsupported get request/i.test(m)
+}
+
+/** True when the media id is still addressable via the Graph API. */
+export async function threadsMediaExists(cfg: ThreadsCfg, mediaId: string): Promise<boolean> {
+  if (!mediaId.trim()) return false
+  try {
+    const media = await apiGet<{ id?: string }>(cfg, `/${mediaId.trim()}`, { fields: 'id' })
+    return typeof media.id === 'string' && media.id.length > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Two-step Threads publish against a specific user path (`me` or numeric id).
+ * Waits after create before the first publish — immediate publish is a common
+ * cause of "The requested resource does not exist" on replies.
+ */
+async function publishAgainstUser(
   cfg: ThreadsCfg,
+  userPath: string,
   text: string,
   replyToId?: string,
   imageUrl?: string
 ): Promise<{ id: string; permalink?: string }> {
-  const u = uid(cfg)
   const createParams: Record<string, string> = imageUrl
     ? { media_type: 'IMAGE', image_url: imageUrl, text }
     : { media_type: 'TEXT', text }
   if (replyToId) createParams.reply_to_id = replyToId
-  const created = await apiPost<{ id?: string }>(cfg, `/${u}/threads`, createParams)
+
+  let created: { id?: string }
+  try {
+    created = await apiPost<{ id?: string }>(cfg, `/${userPath}/threads`, createParams)
+  } catch (err) {
+    // Bad/expired image URLs often surface as "resource does not exist" — fall back to text.
+    if (imageUrl && isMissingResourceError(err)) {
+      return publishAgainstUser(cfg, userPath, text, replyToId, undefined)
+    }
+    throw err
+  }
   if (typeof created.id !== 'string' || !created.id) {
     throw new Error('Threads API: create step returned no creation id')
   }
+
+  // Give the container time to register before the first publish attempt.
+  await delay(replyToId ? 2500 : 1200)
+
   let mediaId = ''
-  for (let attempt = 0; ; attempt++) {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < 8; attempt++) {
     try {
-      const published = await apiPost<{ id?: string }>(cfg, `/${u}/threads_publish`, { creation_id: created.id })
+      const published = await apiPost<{ id?: string }>(cfg, `/${userPath}/threads_publish`, {
+        creation_id: created.id,
+      })
       if (typeof published.id !== 'string' || !published.id) {
         throw new Error('Threads API: publish step returned no media id')
       }
       mediaId = published.id
+      lastErr = undefined
       break
     } catch (err) {
-      if (attempt >= 5 || !isTransientPublishError(err)) throw err
-      await delay(2000)
+      lastErr = err
+      if (attempt >= 7 || !isTransientPublishError(err)) throw err
+      // Back off: 2s, 3s, 4s… — containers sometimes need several seconds.
+      await delay(2000 + attempt * 1000)
     }
   }
+  if (!mediaId) {
+    throw lastErr instanceof Error ? lastErr : new Error('Threads API: publish failed')
+  }
+
   let permalink: string | undefined
   try {
     const media = await apiGet<{ permalink?: string }>(cfg, `/${mediaId}`, { fields: 'permalink' })
@@ -126,6 +183,27 @@ async function publish(
     // best-effort: post succeeded, permalink stays undefined
   }
   return { id: mediaId, permalink }
+}
+
+async function publish(
+  cfg: ThreadsCfg,
+  text: string,
+  replyToId?: string,
+  imageUrl?: string
+): Promise<{ id: string; permalink?: string }> {
+  const primary = uid(cfg)
+  try {
+    return await publishAgainstUser(cfg, primary, text, replyToId, imageUrl)
+  } catch (err) {
+    // Stale/wrong User ID in settings → "resource does not exist". Retry as `me`.
+    if (primary !== 'me' && isMissingResourceError(err)) {
+      console.warn(
+        `[threads] publish via user id ${primary} failed (${errText(err)}); retrying as me`
+      )
+      return publishAgainstUser(cfg, 'me', text, replyToId, imageUrl)
+    }
+    throw err
+  }
 }
 
 export async function publishPost(
@@ -141,7 +219,27 @@ export async function publishReply(
   text: string,
   replyToId: string
 ): Promise<{ id: string; permalink?: string }> {
-  return publish(cfg, text, replyToId)
+  const target = replyToId.trim()
+  if (!target) throw new Error('Threads API: reply target id is empty')
+  // Avoid create+publish round-trips against deleted/expired media ids.
+  if (!(await threadsMediaExists(cfg, target))) {
+    throw new Error(
+      `Threads API: reply target ${target} no longer exists (deleted or expired). Skipping this reply.`
+    )
+  }
+  try {
+    return await publish(cfg, text, target)
+  } catch (err) {
+    const m = errText(err)
+    // Surface the target id so the activity log is actionable.
+    if (isMissingResourceError(err)) {
+      throw new Error(
+        `Threads API: could not publish reply to ${target} — ${m}. ` +
+          'Often fixed by clearing a wrong User ID in Settings (leave blank) or waiting for the container to finish.'
+      )
+    }
+    throw err
+  }
 }
 
 export async function fetchMyPosts(cfg: ThreadsCfg, limit: number): Promise<ThreadsPost[]> {
@@ -198,12 +296,14 @@ async function fetchReplyMessages(
 const ANSWER_PROBE_BUDGET = 40
 
 async function isAnsweredByMe(cfg: ThreadsCfg, replyId: string, myUsername: string): Promise<boolean> {
+  const me = myUsername.toLowerCase()
+  if (!me) return false
   try {
     const data = await apiGet<{ data?: RawReply[] }>(cfg, `/${replyId}/replies`, {
       fields: 'id,username',
       limit: '50',
     })
-    return (data.data ?? []).some((r) => r.username === myUsername)
+    return (data.data ?? []).some((r) => (r.username ?? '').toLowerCase() === me)
   } catch {
     // If we cannot tell, assume unanswered — the UI de-dupes against local reply drafts.
     return false
@@ -213,7 +313,7 @@ async function isAnsweredByMe(cfg: ThreadsCfg, replyId: string, myUsername: stri
 /** Replies on your own recent posts that you have not answered yet. */
 async function fetchUnansweredPostReplies(cfg: ThreadsCfg): Promise<UnansweredReply[]> {
   const me = await apiGet<{ username?: string }>(cfg, '/me', { fields: 'id,username' })
-  const myUsername = typeof me.username === 'string' ? me.username : ''
+  const myUsername = (typeof me.username === 'string' ? me.username : '').toLowerCase()
   const posts = await fetchMyPosts(cfg, 10)
   const out: UnansweredReply[] = []
   let probeBudget = ANSWER_PROBE_BUDGET
@@ -222,24 +322,28 @@ async function fetchUnansweredPostReplies(cfg: ThreadsCfg): Promise<UnansweredRe
     const { items, topLevelOnly } = await fetchReplyMessages(cfg, post.id)
     const answeredIds = new Set<string>()
     for (const m of items) {
-      if (m.username === myUsername && typeof m.replied_to?.id === 'string') answeredIds.add(m.replied_to.id)
+      const uname = (m.username ?? '').toLowerCase()
+      if (uname && myUsername && uname === myUsername && typeof m.replied_to?.id === 'string') {
+        answeredIds.add(m.replied_to.id)
+      }
     }
     for (const m of items) {
       if (typeof m.id !== 'string' || !m.id) continue
-      if (!m.username || m.username === myUsername) continue
+      const uname = (m.username ?? '').toLowerCase()
+      if (!uname || (myUsername && uname === myUsername)) continue
       if (answeredIds.has(m.id)) continue
       if (!topLevelOnly && m.replied_to?.id !== post.id) continue
       const text = typeof m.text === 'string' ? m.text : ''
       if (!text.trim()) continue
       // /conversation carries our answers inline; /replies does not, so probe.
-      if (topLevelOnly && probeBudget > 0) {
+      if (topLevelOnly && probeBudget > 0 && myUsername) {
         probeBudget--
         if (await isAnsweredByMe(cfg, m.id, myUsername)) continue
       }
       out.push({
         id: m.id,
         text,
-        username: m.username,
+        username: m.username!,
         timestamp: typeof m.timestamp === 'string' ? m.timestamp : '',
         rootPostId: post.id,
         rootPostText: post.text,

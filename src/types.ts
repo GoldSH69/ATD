@@ -45,6 +45,7 @@ export interface AutopilotSettings {
   enabled: boolean
   goLive: boolean
   intervalMinutes: number
+  replyIntervalMinutes: number
   goal: string
   categories: string[]
   postLanguage: PostLanguageMode
@@ -82,8 +83,11 @@ export interface AutopilotStatus {
   repliesToday: number
   maxRepliesPerDay: number
   intervalMinutes: number
+  replyIntervalMinutes: number
   lastRunAt: number | null
   nextRunAt: number | null
+  lastReplyRunAt: number | null
+  nextReplyRunAt: number | null
   llmReady: boolean
   threadsReady: boolean
   log: AutopilotLogEntry[]

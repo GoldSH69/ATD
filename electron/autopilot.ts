@@ -1,7 +1,7 @@
 import { db } from './localdb'
 import { getSettings } from './settings'
 import { fetchTopicNews } from './news'
-import { fetchUnansweredReplies } from './threadsApi'
+import { fetchUnansweredReplies, threadsMediaExists } from './threadsApi'
 import { allDrafts, upsertDraft } from './drafts'
 import { postDraftNow } from './scheduler'
 import {
@@ -29,7 +29,8 @@ const UA =
 const AP_DAY = 'autopilotDay'
 const AP_POSTS = 'autopilotPostsToday'
 const AP_REPLIES = 'autopilotRepliesToday'
-const AP_LAST_RUN = 'autopilotLastRun'
+const AP_LAST_RUN = 'autopilotLastRun' // last post/think pass
+const AP_LAST_REPLY_RUN = 'autopilotLastReplyRun' // last replies+mentions pass
 const AP_LOG = 'autopilotLog'
 const AP_USED_LINKS = 'autopilotUsedLinks'
 const AP_ANSWERED = 'autopilotAnswered'
@@ -129,9 +130,16 @@ export function buildAutopilotStatus(): AutopilotStatus {
   const posts = sameDay ? getInt(AP_POSTS) : 0
   const replies = sameDay ? getInt(AP_REPLIES) : 0
   const lastRunAt = db.get<number>(AP_LAST_RUN) ?? null
+  const lastReplyRunAt = db.get<number>(AP_LAST_REPLY_RUN) ?? null
+  const repliesEnabled = ap.replyToAll || ap.replyToMentions
   const nextRunAt = ap.enabled
-    ? (lastRunAt ?? Date.now()) + ap.intervalMinutes * 60_000
+    ? (typeof lastRunAt === 'number' ? lastRunAt : Date.now()) + ap.intervalMinutes * 60_000
     : null
+  const nextReplyRunAt =
+    ap.enabled && repliesEnabled
+      ? (typeof lastReplyRunAt === 'number' ? lastReplyRunAt : Date.now()) +
+        ap.replyIntervalMinutes * 60_000
+      : null
   return {
     running: ap.enabled,
     goLive: ap.goLive,
@@ -141,8 +149,11 @@ export function buildAutopilotStatus(): AutopilotStatus {
     repliesToday: replies,
     maxRepliesPerDay: ap.maxRepliesPerDay,
     intervalMinutes: ap.intervalMinutes,
+    replyIntervalMinutes: ap.replyIntervalMinutes,
     lastRunAt: typeof lastRunAt === 'number' ? lastRunAt : null,
     nextRunAt,
+    lastReplyRunAt: typeof lastReplyRunAt === 'number' ? lastReplyRunAt : null,
+    nextReplyRunAt,
     llmReady: unconfiguredMessage(settings.llm) === null,
     threadsReady: Boolean(settings.threads.accessToken),
     log: readLog(),
@@ -168,14 +179,19 @@ async function maybeTick(): Promise<void> {
   if (busy) return
   const ap = getSettings().autopilot
   if (!ap.enabled) return
-  const lastRun = db.get<number>(AP_LAST_RUN) ?? 0
-  if (Date.now() - lastRun < ap.intervalMinutes * 60_000) return
-  await runAutopilotPass('scheduled')
+  const now = Date.now()
+  const lastPost = db.get<number>(AP_LAST_RUN) ?? 0
+  const lastReply = db.get<number>(AP_LAST_REPLY_RUN) ?? 0
+  const duePosts = now - lastPost >= ap.intervalMinutes * 60_000
+  const repliesOn = ap.replyToAll || ap.replyToMentions
+  const dueReplies = repliesOn && now - lastReply >= ap.replyIntervalMinutes * 60_000
+  if (!duePosts && !dueReplies) return
+  await runAutopilotPass('scheduled', { posts: duePosts, replies: dueReplies })
 }
 
-/** Force one pass immediately (the "Run once now" button). Ignores the interval. */
+/** Force one pass immediately (the "Run once now" button). Ignores the intervals. */
 export async function runAutopilotNow(): Promise<AutopilotStatus> {
-  if (!busy) await runAutopilotPass('manual')
+  if (!busy) await runAutopilotPass('manual', { posts: true, replies: true })
   return buildAutopilotStatus()
 }
 
@@ -354,10 +370,25 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
   const budget = Math.min(ap.maxRepliesPerRun, remainingDay)
   let sent = 0
 
+  const threadsCfg = {
+    accessToken: settings.threads.accessToken,
+    userId: settings.threads.userId,
+  }
+
   for (const r of replies) {
     if (sent >= budget) break
     if (answered.has(r.id) || localReplyIds.has(r.id)) continue
     const kind = r.kind === 'mention' ? 'mention' : 'reply'
+    const label = kind === 'mention' ? 'mention' : 'reply'
+
+    // Skip deleted/expired targets before spending an LLM call.
+    if (!(await threadsMediaExists(threadsCfg, r.id))) {
+      answered.add(r.id)
+      void db.set(AP_ANSWERED, [...answered].slice(-1000))
+      log('skip', `Skipped stale ${label} from @${r.username} (media no longer exists).`)
+      continue
+    }
+
     const isCreator = handle !== '' && r.username.trim().toLowerCase() === handle
     const contextText = await fetchReplyContext(r.text, r.rootPostText)
     const gen = await generateAutopilotReply({
@@ -387,11 +418,18 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
     }
     const publishReply = ap.goLive && ap.autoReply
     const res = await commitDraft(draft, publishReply)
-    answered.add(r.id)
-    void db.set(AP_ANSWERED, [...answered].slice(-1000))
-    sent++
-    void db.set(AP_REPLIES, repliesToday + sent)
-    const label = kind === 'mention' ? 'mention' : 'reply'
+
+    // Draft-only: count as handled. Live: only mark answered on success or permanent missing target.
+    const permanentMiss =
+      !res.ok && /no longer exists|does not exist|reply target/i.test(res.message)
+    if (!publishReply || res.ok || permanentMiss) {
+      answered.add(r.id)
+      void db.set(AP_ANSWERED, [...answered].slice(-1000))
+    }
+    if (res.ok || !publishReply) {
+      sent++
+      void db.set(AP_REPLIES, repliesToday + sent)
+    }
     if (!publishReply) log('reply', `Drafted ${label} to @${r.username} (review).`)
     else if (res.ok) log('reply', `Replied to ${label} from @${r.username}.`, res.permalink)
     else log('error', `${label} publish failed (@${r.username}): ${res.message}`)
@@ -401,8 +439,12 @@ async function runReplyPhase(repliesToday: number): Promise<number> {
   return sent
 }
 
-async function runAutopilotPass(reason: 'scheduled' | 'manual'): Promise<void> {
+async function runAutopilotPass(
+  reason: 'scheduled' | 'manual',
+  phases: { posts: boolean; replies: boolean }
+): Promise<void> {
   if (busy) return
+  if (!phases.posts && !phases.replies) return
   busy = true
   broadcastStatus()
   try {
@@ -416,11 +458,24 @@ async function runAutopilotPass(reason: 'scheduled' | 'manual'): Promise<void> {
       log('error', 'Threads API is not configured — add an access token in Settings.')
       return
     }
-    await db.set(AP_LAST_RUN, Date.now())
     const { posts, replies } = rolloverDaily()
-    log('info', `Thinking… (${reason}) — ${posts}/${settings.autopilot.maxPostsPerDay} posts, ${replies}/${settings.autopilot.maxRepliesPerDay} replies today.`)
-    await runPostPhase(posts)
-    await runReplyPhase(getInt(AP_REPLIES))
+    const parts: string[] = []
+    if (phases.posts) parts.push('posts')
+    if (phases.replies) parts.push('replies/mentions')
+    log(
+      'info',
+      `${parts.join(' + ')} (${reason}) — ${posts}/${settings.autopilot.maxPostsPerDay} posts, ${replies}/${settings.autopilot.maxRepliesPerDay} replies today.`
+    )
+    // Stamp timers before work so a slow LLM call doesn't pile up overdue ticks.
+    const now = Date.now()
+    if (phases.posts) {
+      await db.set(AP_LAST_RUN, now)
+      await runPostPhase(posts)
+    }
+    if (phases.replies) {
+      await db.set(AP_LAST_REPLY_RUN, now)
+      await runReplyPhase(getInt(AP_REPLIES))
+    }
   } catch (err) {
     log('error', `Autopilot pass failed: ${err instanceof Error ? err.message : String(err)}`)
   } finally {

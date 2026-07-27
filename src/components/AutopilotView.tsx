@@ -21,7 +21,16 @@ export default function AutopilotView() {
   const ko = settings.language === 'ko'
   const t = (en: string, kr: string) => (ko ? kr : en)
 
-  const [form, setForm] = useState<AutopilotSettings>(settings.autopilot)
+  const withReplyDefaults = (ap: AutopilotSettings): AutopilotSettings => ({
+    ...ap,
+    replyIntervalMinutes:
+      typeof ap.replyIntervalMinutes === 'number' && Number.isFinite(ap.replyIntervalMinutes)
+        ? ap.replyIntervalMinutes
+        : 5,
+    replyToMentions: typeof ap.replyToMentions === 'boolean' ? ap.replyToMentions : true,
+  })
+
+  const [form, setForm] = useState<AutopilotSettings>(() => withReplyDefaults(settings.autopilot))
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [launching, setLaunching] = useState(false)
@@ -30,7 +39,7 @@ export default function AutopilotView() {
 
   // Follow external config changes only while the form has no local edits.
   useEffect(() => {
-    if (!dirty) setForm(settings.autopilot)
+    if (!dirty) setForm(withReplyDefaults(settings.autopilot))
   }, [settings.autopilot, dirty])
 
   // Live clock for the "next run" countdown.
@@ -117,15 +126,25 @@ export default function AutopilotView() {
   const popularCats = AUTOPILOT_CATEGORIES.filter((c) => c.popular)
   const moreCats = AUTOPILOT_CATEGORIES.filter((c) => !c.popular)
 
-  const nextRunLabel = (): string => {
+  const formatCountdown = (at: number | null | undefined): string => {
     if (!running) return t('Paused', '일시정지')
-    if (busy) return t('Thinking…', '생각하는 중…')
-    if (!status?.nextRunAt) return '—'
-    const ms = status.nextRunAt - now
+    if (!at) return '—'
+    const ms = at - now
     if (ms <= 0) return t('Any moment…', '곧 실행')
     const mins = Math.floor(ms / 60000)
     const secs = Math.floor((ms % 60000) / 1000)
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
+  }
+
+  const nextPostLabel = (): string => {
+    if (busy) return t('Working…', '작동 중…')
+    return formatCountdown(status?.nextRunAt)
+  }
+
+  const nextReplyLabel = (): string => {
+    if (!form.replyToAll && !form.replyToMentions) return t('Off', '끔')
+    if (busy) return t('Working…', '작동 중…')
+    return formatCountdown(status?.nextReplyRunAt)
   }
 
   const langOptions: { id: PostLanguageMode; label: string }[] = [
@@ -204,8 +223,26 @@ export default function AutopilotView() {
               </span>
             </div>
             <div className="ap-stat">
-              <span className="ap-stat-k">{t('Next run', '다음 실행')}</span>
-              <span className="ap-stat-v">{nextRunLabel()}</span>
+              <span className="ap-stat-k">{t('Next post', '다음 게시 판단')}</span>
+              <span className="ap-stat-v">
+                {nextPostLabel()}
+                <span className="ap-stat-sub">
+                  {' '}
+                  · {status?.intervalMinutes ?? form.intervalMinutes}
+                  {t('m', '분')}
+                </span>
+              </span>
+            </div>
+            <div className="ap-stat">
+              <span className="ap-stat-k">{t('Next reply check', '다음 답글 확인')}</span>
+              <span className="ap-stat-v">
+                {nextReplyLabel()}
+                <span className="ap-stat-sub">
+                  {' '}
+                  · {status?.replyIntervalMinutes ?? form.replyIntervalMinutes}
+                  {t('m', '분')}
+                </span>
+              </span>
             </div>
             <div className="ap-stat">
               <span className="ap-stat-k">{t('Mode', '모드')}</span>
@@ -394,19 +431,23 @@ export default function AutopilotView() {
           <div className="section">
             <div className="section-title">{t('Cadence & limits', '주기 & 한도')}</div>
             <div className="section-desc">
-              {t('How often it thinks and how much it may post. Keeps it from spamming.', '얼마나 자주 판단하고 얼마나 게시할지 정합니다. 도배를 방지합니다.')}
+              {t(
+                'Post planning and reply/mention checks run on separate timers so replies can be faster without posting more often.',
+                '게시 판단과 답글·멘션 확인은 서로 다른 주기로 동작합니다. 게시를 늘리지 않고도 답글을 더 자주 처리할 수 있습니다.'
+              )}
             </div>
             <div className="row">
               <div className="field grow">
-                <span className="field-label">{t('Think every (min)', '실행 주기(분)')}</span>
+                <span className="field-label">{t('Post / think every (min)', '게시 판단 주기(분)')}</span>
                 <input
                   className="input"
                   type="number"
                   min={1}
                   value={form.intervalMinutes}
                   onChange={(e) => edit({ intervalMinutes: e.target.valueAsNumber })}
-                  onBlur={() => edit({ intervalMinutes: num(form.intervalMinutes, 1, 1440, 1) })}
+                  onBlur={() => edit({ intervalMinutes: num(form.intervalMinutes, 1, 1440, 60) })}
                 />
+                <span className="hint">{t('Plans and creates posts.', '게시물을 계획·작성합니다.')}</span>
               </div>
               <div className="field grow">
                 <span className="field-label">{t('Max posts / run', '실행당 최대 게시')}</span>
@@ -495,6 +536,25 @@ export default function AutopilotView() {
                   </label>
                 </div>
                 <div className="row">
+                  <div className="field grow">
+                    <span className="field-label">{t('Check replies every (min)', '답글 확인 주기(분)')}</span>
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      value={form.replyIntervalMinutes}
+                      onChange={(e) => edit({ replyIntervalMinutes: e.target.valueAsNumber })}
+                      onBlur={() =>
+                        edit({ replyIntervalMinutes: num(form.replyIntervalMinutes, 1, 1440, 5) })
+                      }
+                    />
+                    <span className="hint">
+                      {t(
+                        'Separate from post timer. Default 5 min so replies/mentions are answered faster.',
+                        '게시 주기와 별개입니다. 기본 5분 — 답글·멘션을 더 빠르게 응대합니다.'
+                      )}
+                    </span>
+                  </div>
                   <div className="field grow">
                     <span className="field-label">{t('Max replies / run', '실행당 최대 답글')}</span>
                     <input

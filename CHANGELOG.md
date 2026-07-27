@@ -9,6 +9,23 @@ Session-level notes also live under `_changelog/`.
 
 ---
 
+## [0.2.3] — 2026-07-27
+
+### Added
+
+- **Separate reply timer** — replies and @mentions run on their own cadence (`replyIntervalMinutes`, **default 5 minutes**), independent of the post/think interval.
+- Auto status panel shows **Next post** and **Next reply check** countdowns with each interval.
+
+### Fixed
+
+- Threads publish/reply **“resource does not exist”**: retry image posts as text-only; treat warm-up `does not exist` on `threads_publish` as transient; verify reply targets still exist before generating/publishing; do not burn the daily reply budget on failed live publishes; skip permanently missing targets.
+
+### Changed
+
+- Default **post/think interval** is **60 minutes**; default **reply check** is **5 minutes**.
+
+---
+
 ## [0.2.2] — 2026-07-27
 
 ### Added

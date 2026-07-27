@@ -1257,6 +1257,14 @@ body {
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.ap-stat-sub {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 .ap-warn {

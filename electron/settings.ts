@@ -51,7 +51,8 @@ export function defaultAutopilot(): AutopilotSettings {
   return {
     enabled: false,
     goLive: true,
-    intervalMinutes: 1, // Full-Auto tick (posts + replies) every minute
+    intervalMinutes: 60, // how often to plan/post
+    replyIntervalMinutes: 5, // replies + @mentions run on a separate, faster timer
     goal:
       'Grow an engaged Threads following with posts that feel native to popular Threads niches — especially AI, tech, builders, and hot takes people actually reply to.',
     categories: [...AUTOPILOT_DEFAULT_CATEGORIES],
@@ -246,6 +247,7 @@ function normalizeAutopilot(
     enabled: r.enabled === true,
     goLive: typeof r.goLive === 'boolean' ? r.goLive : d.goLive,
     intervalMinutes: clampInt(r.intervalMinutes, 1, 1440, d.intervalMinutes),
+    replyIntervalMinutes: clampInt(r.replyIntervalMinutes, 1, 1440, d.replyIntervalMinutes),
     goal: str(r.goal, d.goal),
     // Empty list falls back to popular Threads niches (AI-first defaults).
     categories: Array.isArray(r.categories)
