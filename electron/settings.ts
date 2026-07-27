@@ -43,18 +43,22 @@ export function defaultSettings(): AppSettings {
   }
 }
 
+/** Popular Threads niches used when Full-Auto has no categories selected. AI-first. */
+export const AUTOPILOT_DEFAULT_CATEGORIES = ['ai', 'technology', 'startups', 'productivity', 'humor']
+
 export function defaultAutopilot(): AutopilotSettings {
   return {
     enabled: false,
     goLive: true,
     intervalMinutes: 60,
-    goal: 'Grow an engaged Threads following by posting relatable, timely, human-sounding takes that spark replies and likes.',
-    categories: ['technology', 'ai', 'startups'],
+    goal:
+      'Grow an engaged Threads following with posts that feel native to popular Threads niches — especially AI, tech, builders, and hot takes people actually reply to.',
+    categories: [...AUTOPILOT_DEFAULT_CATEGORIES],
     postLanguage: 'match',
     toneNotes: '',
     maxPostsPerDay: 6,
     maxPostsPerRun: 1,
-    originalRatio: 35,
+    originalRatio: 40,
     agentName: '',
     creatorName: '',
     creatorHandle: '',
@@ -224,14 +228,19 @@ function normalizeAutopilot(
 ): AutopilotSettings {
   const r = (raw ?? {}) as Partial<AutopilotSettings>
   const categories = strArr(r.categories)
-    .map((c) => c.trim())
+    .map((c) => c.trim().toLowerCase())
     .filter(Boolean)
   return {
     enabled: r.enabled === true,
     goLive: typeof r.goLive === 'boolean' ? r.goLive : d.goLive,
     intervalMinutes: clampInt(r.intervalMinutes, 5, 1440, d.intervalMinutes),
     goal: str(r.goal, d.goal),
-    categories: Array.isArray(r.categories) ? categories : d.categories,
+    // Empty list falls back to popular Threads niches (AI-first defaults).
+    categories: Array.isArray(r.categories)
+      ? categories.length > 0
+        ? categories
+        : [...AUTOPILOT_DEFAULT_CATEGORIES]
+      : d.categories,
     postLanguage: postLanguageMode(r.postLanguage, d.postLanguage),
     toneNotes: str(r.toneNotes, ''),
     maxPostsPerDay: clampInt(r.maxPostsPerDay, 1, 96, d.maxPostsPerDay),

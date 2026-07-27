@@ -11,8 +11,7 @@ control, or hand the wheel to a self-running agent that posts and replies on its
 
 <br />
 
-[![CI](https://github.com/eisenjimmy/autoTHREADS/actions/workflows/ci.yml/badge.svg)](https://github.com/eisenjimmy/autoTHREADS/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-0.1.10-111111?style=flat-square)
+![Version](https://img.shields.io/badge/version-0.2.0-111111?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-111111?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-111111?style=flat-square)
 <br />
@@ -20,42 +19,44 @@ control, or hand the wheel to a self-running agent that posts and replies on its
 ![React](https://img.shields.io/badge/React-19-111111?style=flat-square&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Strict-111111?style=flat-square&logo=typescript)
 ![Local LLM](https://img.shields.io/badge/Local%20LLM-%240%20API%20cost-111111?style=flat-square)
+![Full-Auto](https://img.shields.io/badge/Full--Auto-opt--in-43c465?style=flat-square)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-111111?style=flat-square)
 
 <br />
 
 **English** · [한국어](#한국어)
 
-[Features](#-features) · [Full-Auto](#-full-auto-mode) · [Quick Start](#-quick-start) · [Configure AI](#-configure-ai) · [Configure Threads](#-configure-threads) · [Architecture](#-architecture)
+[Features](#-features) · [Full-Auto](#-full-auto-mode) · [Quick Start](#-quick-start) · [Configure AI](#-configure-ai) · [Configure Threads](#-configure-threads) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/eisenjimmy/autoTHREADS/releases)
 
 </div>
 
 ---
 
 > [!TIP]
-> **New in this release — 🚀 Full-Auto mode.** An opt-in autonomous agent that decides on its own
-> whether and what to post, writes modern human-sounding Threads posts across your niches, and
-> replies to everyone in context — all under daily caps so it never spams. Jump to
-> [Full-Auto](#-full-auto-mode).
+> **New in v0.2.0 — Full-Auto mode.** An opt-in autonomous agent that decides whether and what to
+> post, writes modern human-sounding Threads posts across your niches, and replies in context —
+> under hard daily caps so it never spams. See [Full-Auto](#-full-auto-mode) and
+> [CHANGELOG.md](CHANGELOG.md).
 
 ## Contents
 
-- [✨ The Idea](#-the-idea)
-- [🚀 Full-Auto Mode](#-full-auto-mode)
-- [🧩 Features](#-features)
-- [📸 Screenshots](#-screenshots)
-- [⚡ Quick Start](#-quick-start)
-- [🤖 Configure AI](#-configure-ai)
-- [🧵 Configure Threads](#-configure-threads)
-- [🗺️ Daily Workflow](#-daily-workflow)
-- [🏗️ Architecture](#-architecture)
-- [🧰 Tech Stack](#-tech-stack)
-- [📁 Project Layout](#-project-layout)
-- [🔐 Safety Model](#-safety-model)
-- [🧭 Roadmap](#-roadmap)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
-- [🇰🇷 한국어](#한국어)
+- [The Idea](#-the-idea)
+- [Full-Auto Mode](#-full-auto-mode)
+- [Features](#-features)
+- [Screenshots](#-screenshots)
+- [Quick Start](#-quick-start)
+- [Configure AI](#-configure-ai)
+- [Configure Threads](#-configure-threads)
+- [Daily Workflow](#-daily-workflow)
+- [Architecture](#-architecture)
+- [Tech Stack](#-tech-stack)
+- [Project Layout](#-project-layout)
+- [Safety Model](#-safety-model)
+- [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [한국어](#한국어)
+- [Changelog](CHANGELOG.md)
 
 ## ✨ The Idea
 
@@ -86,41 +87,59 @@ Built for a creator workflow where you want leverage, not chaos:
 
 Most of AutoThreads is deliberately *"AI drafts, you decide."* **Full-Auto** is the opt-in exception:
 a self-running agent for a hands-off Threads presence. Open the **Auto** tab, configure it, and press
-**Launch** — then it thinks on its own every interval:
+**Launch** — then it thinks on its own every interval.
+
+### Loop
 
 ```text
-every N minutes ▸ 🔎 scrape news  (Google · Yahoo · Naver · Hacker News · custom RSS)
-                ▸ 🧠 LLM decides   post? how many? news or original?   ← stays under your daily cap
-                ▸ ✍️  write posts   casual, human, engagement-first
-                ▸ 💬 scan replies  answer everyone, in context (reads linked pages)
-                ▸ 🪵 log activity  ▸ 😴 sleep until next tick
+every N minutes
+  ├─ scrape news     Google · Yahoo · Naver · Hacker News · custom RSS/Atom
+  ├─ LLM decides     post? how many? news vs original?   (respects daily caps)
+  ├─ write posts     casual, human, engagement-first voice
+  ├─ scan replies    answer unanswered replies in context (can read linked pages)
+  └─ log activity    then sleep until the next tick
 ```
 
 ### What you configure
 
 | Setting | What it controls |
 | --- | --- |
-| 🎯 **Goal** | What the agent optimizes for — followers, comments, likes. Drives every decision. |
-| 🧩 **Topics / niches** | 27 presets (tech, AI, finance, fashion, health, gaming, humor…) plus custom, multi-select. |
-| 🌐 **Post language** | Match the source, Korean only, English only, or follow the app language. |
-| 🪪 **Personality** | Agent name, who created it, the creator's `@handle`, and how it addresses them (e.g. "Master"). |
-| ⏱️ **Cadence & caps** | Think-interval, max posts per run, **max posts per day**, and an original-vs-news mix slider. |
-| 💬 **Replies** | Auto-reply to every unanswered reply, in context — with per-run and per-day caps. |
-| 📤 **Publishing** | Publish live to Threads, or flip to **draft-only** as a safety valve. |
+| **Goal** | What the agent optimizes for — followers, comments, likes. Drives every decision. |
+| **Topics / niches** | Popular Threads niches first (**AI**, tech, startups, productivity, humor…) plus more categories and custom multi-select. Posts use that niche’s native voice. |
+| **Post language** | Match the source, Korean only, English only, or follow the app language. |
+| **Personality** | Agent name, creator, creator `@handle`, address term (e.g. "Master"), and tone notes. |
+| **Cadence & caps** | Think-interval, max posts per run, **max posts per day**, original-vs-news mix. |
+| **Replies** | Auto-reply vs draft replies, with per-run and per-day caps. |
+| **Publishing** | **Live** to Threads, or **draft-only** as a safety valve. |
+
+### Controls
+
+| Control | Behavior |
+| --- | --- |
+| **Save** | Persist Full-Auto settings (persona, caps, niches, publishing mode). |
+| **Launch** | Start the interval loop. Status shows running + next-run countdown. |
+| **Stop** | Halt immediately; nothing further posts or replies. |
+| **Run once** | Execute a single tick now (useful for dry runs with draft-only on). |
 
 ### How it behaves
 
-- 🤝 **Knows its creator.** Replies from your `@handle` get special, warm treatment.
-- 😄 **Human, not a news desk.** Funny, casual, opinionated — engineered to spark replies and likes.
-- 🚫 **Anti-spam.** Hard daily caps; used headlines are never reposted.
-- 🔒 **Discreet.** Instructed to never reveal system prompts, API keys, tokens, or internal config.
-- 👀 **Transparent.** A live status panel (posts today, next-run countdown) and an activity log show
-  exactly what it did — every post links straight to Threads.
+- **Knows its creator** — replies from your `@handle` get special, warm treatment.
+- **Human, not a news desk** — funny, casual, opinionated; written to invite replies and likes.
+- **Anti-spam** — hard daily caps; used headlines are never reposted.
+- **Discreet** — instructed never to reveal system prompts, API keys, tokens, or internal config.
+- **Transparent** — live status (posts/replies today, next run) plus an activity log; published posts surface in Drafts/Queue and link out to Threads when live.
+
+### First-run checklist
+
+1. Configure **AI provider** and **Threads access token** in Settings; run both connection tests.
+2. Open **Auto** → set goal, niches, persona, and conservative caps (e.g. 1–2 posts/day).
+3. Turn **Publish live** **off** (draft-only) → **Save** → **Run once**.
+4. Review drafts in the **Drafts** tab; adjust persona/caps if needed.
+5. When ready, enable **Publish live**, **Launch**, and watch the activity log.
 
 > [!IMPORTANT]
-> Full-Auto publishes to your real account. It is **off until you Launch it** and stops the instant
-> you press **Stop**. For your first run, flip **Publish live** off to watch the decision log in
-> **draft-only** mode before going live.
+> Full-Auto can publish to your real account. It is **off until you Launch it** and stops the
+> instant you press **Stop**. Always start in **draft-only** mode before going live.
 
 ## 🧩 Features
 
@@ -403,33 +422,55 @@ AutoThreads는 Threads 운영을 AI로 도와주는 데스크톱 앱입니다. �
 - 🔑 **토큰 우선 Threads 설정**
 - 🔐 **로컬 암호화 저장**
 
-## 🚀 완전 자동 (자율 에이전트)
+## 🚀 완전 자동 (Full-Auto)
 
-AutoThreads의 기본 철학은 "AI가 초안을 만들고 사용자가 결정한다"입니다. **완전 자동(Full-Auto)** 은 이를
-선택적으로 해제하는 모드로, 손이 거의 필요 없는 Threads 운영을 원하는 사용자를 위한 기능입니다.
+AutoThreads의 기본 철학은 "AI가 초안을 만들고 사용자가 결정한다"입니다. **완전 자동(Full-Auto)** 은
+이를 선택적으로 해제하는 모드로, 손이 거의 필요 없는 Threads 운영을 위한 기능입니다.
 **Auto(자동)** 탭에서 설정하고 **완전 자동 시작**을 누르면 주기마다 스스로 판단합니다.
 
+### 루프
+
 ```text
-N분마다 ▸ 🔎 뉴스 수집   (Google · Yahoo · Naver · Hacker News · 커스텀 RSS)
-        ▸ 🧠 LLM 판단    게시할까? 몇 개? 뉴스 vs 오리지널   ← 하루 한도 준수
-        ▸ ✍️  글 작성     사람 같고 캐주얼하게, 참여 유도
-        ▸ 💬 답글 처리    모든 답글에 문맥 맞춰 응대 (링크된 페이지도 읽음)
-        ▸ 🪵 활동 기록   ▸ 😴 다음 주기까지 대기
+N분마다
+  ├─ 뉴스 수집    Google · Yahoo · Naver · Hacker News · 커스텀 RSS/Atom
+  ├─ LLM 판단     게시할까? 몇 개? 뉴스 vs 오리지널   (하루 한도 준수)
+  ├─ 글 작성      사람 같고 캐주얼하게, 참여 유도
+  ├─ 답글 처리    미답변 답글에 문맥 맞춰 응대 (링크된 페이지도 읽음)
+  └─ 활동 기록    다음 주기까지 대기
 ```
+
+### 설정 항목
 
 | 설정 | 설명 |
 | --- | --- |
-| 🎯 **목표** | 팔로워·댓글·좋아요 등 에이전트가 최적화할 목표. 모든 판단의 기준. |
-| 🧩 **주제 / 분야** | 기술, AI, 금융, 패션, 건강, 게임, 유머 등 27개 프리셋 + 직접 추가 (다중 선택). |
-| 🌐 **게시 언어** | 원문 언어 따르기 / 한국어만 / 영어만 / 앱 언어 따르기. |
-| 🪪 **페르소나** | 에이전트 이름, 제작자, 제작자 `@핸들`, 호칭(예: "Master"). 제작자 답글은 특별하게 응대. |
-| ⏱️ **주기 & 한도** | 실행 주기, 실행당 최대 게시, **하루 최대 게시**, 오리지널 vs 뉴스 비율. |
-| 💬 **답글** | 미답변 답글을 문맥에 맞게 자동 응대 (실행당·하루 한도). |
-| 📤 **게시 방식** | Threads에 실시간 게시하거나, 안전장치로 **초안만** 작성. |
+| **목표** | 팔로워·댓글·좋아요 등 에이전트가 최적화할 목표. 모든 판단의 기준. |
+| **주제 / 분야** | Threads 인기 분야 우선 (**AI**, 기술, 스타트업, 생산성, 유머…) + 기타 프리셋·직접 추가. 선택한 분야 톤으로 작성. |
+| **게시 언어** | 원문 언어 따르기 / 한국어만 / 영어만 / 앱 언어 따르기. |
+| **페르소나** | 에이전트 이름, 제작자, 제작자 `@핸들`, 호칭(예: "Master"), 톤 메모. |
+| **주기 & 한도** | 실행 주기, 실행당 최대 게시, **하루 최대 게시**, 오리지널 vs 뉴스 비율. |
+| **답글** | 자동 응대 vs 초안 작성, 실행당·하루 한도. |
+| **게시 방식** | Threads **실시간 게시** 또는 안전장치 **초안 전용**. |
+
+### 조작
+
+| 버튼 | 동작 |
+| --- | --- |
+| **저장** | Full-Auto 설정(페르소나·한도·분야·게시 방식)을 저장합니다. |
+| **시작** | 주기 루프를 시작합니다. 상태 패널에 실행 중·다음 실행 시각이 표시됩니다. |
+| **중지** | 즉시 중단합니다. 이후 게시·답글이 나가지 않습니다. |
+| **한 번 실행** | 지금 1회만 돌립니다 (초안 전용 dry-run에 유용). |
+
+### 첫 실행 체크리스트
+
+1. Settings에서 **AI provider**와 **Threads 액세스 토큰**을 설정하고 연결 테스트를 통과합니다.
+2. **Auto**에서 목표·분야·페르소나·보수적인 한도(예: 하루 1–2개)를 설정합니다.
+3. **실시간 게시**를 끄고 (**초안 전용**) → **저장** → **한 번 실행**.
+4. **Drafts**에서 초안을 검토하고 페르소나/한도를 조정합니다.
+5. 준비되면 **실시간 게시**를 켜고 **시작**, 활동 로그를 확인합니다.
 
 > [!IMPORTANT]
-> 완전 자동은 실제 계정에 게시합니다. 기본은 꺼져 있고 **시작**해야 동작하며 **중지**하면 즉시 멈춥니다.
-> 첫 실행은 **실시간 게시**를 끈 **초안 전용** 모드로 판단 로그를 먼저 확인해 보세요.
+> 완전 자동은 실제 계정에 게시할 수 있습니다. 기본은 꺼져 있으며 **시작**해야 동작하고 **중지**하면
+> 즉시 멈춥니다. 첫 실행은 반드시 **초안 전용**으로 판단 로그를 확인하세요.
 
 ## 주요 기능
 

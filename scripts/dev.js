@@ -13,18 +13,33 @@ const PORT = 5174
 const vite = spawn(node, ['node_modules/vite/bin/vite.js'], { cwd: root, stdio: 'inherit' })
 
 function waitForPort(port, tries = 120) {
+  // Prefer localhost over 127.0.0.1: Vite often binds IPv6-only (::1),
+  // and connect('127.0.0.1') then fails forever on some macOS setups.
+  const hosts = ['localhost', '127.0.0.1', '::1']
   return new Promise((resolve, reject) => {
     const attempt = (left) => {
-      const sock = net.connect(port, '127.0.0.1')
-      sock.once('connect', () => {
-        sock.destroy()
-        resolve()
-      })
-      sock.once('error', () => {
-        sock.destroy()
-        if (left <= 0) reject(new Error('vite dev server never came up'))
-        else setTimeout(() => attempt(left - 1), 500)
-      })
+      let remaining = hosts.length
+      let connected = false
+      for (const host of hosts) {
+        const sock = net.connect({ port, host })
+        sock.once('connect', () => {
+          if (connected) {
+            sock.destroy()
+            return
+          }
+          connected = true
+          sock.destroy()
+          resolve()
+        })
+        sock.once('error', () => {
+          sock.destroy()
+          remaining -= 1
+          if (!connected && remaining <= 0) {
+            if (left <= 0) reject(new Error('vite dev server never came up'))
+            else setTimeout(() => attempt(left - 1), 500)
+          }
+        })
+      }
     }
     attempt(tries)
   })

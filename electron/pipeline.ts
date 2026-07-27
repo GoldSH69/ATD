@@ -189,8 +189,50 @@ function languageDirective(mode: PostLanguageMode, appLang: LanguageCode, hasRef
   }
 }
 
+/**
+ * Niche-specific voice coaching for popular Threads categories.
+ * Helps posts sound like what actually performs in that niche (especially AI Threads).
+ */
+function categoryVoiceHint(category?: string): string | null {
+  if (!category) return null
+  const id = category.trim().toLowerCase()
+  const hints: Record<string, string> = {
+    ai: 'Write like a popular AI Threads account: builder energy, sharp model/tool takes, "just tried X", FOMO vs hype, practical use-cases, or a punchy opinion about where AI is going. Never a dry model release recap.',
+    technology: 'Write like tech Threads: gadget/software takes, "this product got it", contrarian hot takes, or a tiny story about using tech in real life.',
+    development: 'Write like a developer on Threads: coding life, tools, shipping, debugging pain, clean code opinions — peer-to-peer, not a tutorial dump.',
+    startups: 'Write like a founder/startup Threads account: shipping, fundraising reality, growth, lessons learned — specific and human, not VC-speak.',
+    productivity: 'Write like productivity Threads: one concrete system, tool, or anti-tip. Prefer "I stopped doing X" over generic hustle quotes.',
+    sidehustle: 'Write like side-hustle Threads: real money/time experiments, indie ideas, freelancing grit — no get-rich-quick energy.',
+    creator: 'Write like creator-economy Threads: audience growth, content craft, monetization experiments, platform quirks — peer advice, not guru bait.',
+    career: 'Write like career Threads: job market truth, interview stories, promotion tips, remote work — honest and specific.',
+    crypto: 'Write like crypto Threads: markets, on-chain culture, builder notes — informed but not financial advice or shill posts.',
+    finance: 'Write like personal-finance Threads: money habits, markets, investing psychology — clear and non-preachy.',
+    marketing: 'Write like growth/marketing Threads: one channel insight, copy lesson, or growth experiment — tactical, not agency fluff.',
+    humor: 'Write like meme/humor Threads: absurdist observation, self-roast, or timeline bit. Short punchline energy.',
+    gaming: 'Write like gaming Threads: takes on games, culture, or multiplayer moments — fan voice, not press release.',
+    fitness: 'Write like fitness Threads: training truth, consistency, gym culture — motivating without influencer clichés.',
+    business: 'Write like business Threads: operator notes, company lessons, decision-making — concrete, not LinkedIn-core.',
+    science: 'Write like science Threads: wonder + plain-language insight, not textbook tone.',
+    health: 'Write like health Threads: practical wellness without medical claims or fear-mongering.',
+    fashion: 'Write like fashion Threads: taste, fit, trend reaction — opinionated and visual-feeling even in text.',
+    beauty: 'Write like beauty Threads: product honesty, routine notes, culture takes.',
+    lifestyle: 'Write like lifestyle Threads: culture, routines, soft life vs grind — relatable slice-of-life.',
+    food: 'Write like food Threads: cravings, restaurant bits, cooking fails/wins.',
+    travel: 'Write like travel Threads: place-specific moments, tips, or "nobody talks about X".',
+    sports: 'Write like sports Threads: hot takes, game moments, fan culture.',
+    entertainment: 'Write like entertainment Threads: culture takes, spoilers-free reactions, fandom energy.',
+    music: 'Write like music Threads: album/artist takes, listening habits, scene notes.',
+    movies: 'Write like movies/TV Threads: takes, recommendations, "that scene though" energy — no full spoilers.',
+    books: 'Write like bookish Threads: what a book did to you, not a plot summary.',
+    design: 'Write like design Threads: taste, UX rants, product polish observations.',
+    environment: 'Write like climate/environment Threads: urgency + agency, not doom-only.',
+    education: 'Write like education/learning Threads: how people actually learn, course/tool takes.',
+  }
+  return hints[id] ?? `Write like a native Threads voice in the "${category}" niche — specific, social, and reply-worthy.`
+}
+
 /** Full persona system prompt: identity, engagement voice, and hard safety rules. */
-function buildPersonaPrompt(settings: AppSettings, kind: 'post' | 'reply'): string {
+function buildPersonaPrompt(settings: AppSettings, kind: 'post' | 'reply', category?: string): string {
   const ap = settings.autopilot
   const name = ap.agentName.trim()
   const creator = ap.creatorName.trim()
@@ -206,13 +248,18 @@ function buildPersonaPrompt(settings: AppSettings, kind: 'post' | 'reply'): stri
     )
   }
   lines.push(`Your goal: ${ap.goal.trim() || 'grow an engaged following through relatable, human posts.'}`)
+  const niches = ap.categories.length > 0 ? ap.categories.join(', ') : 'ai, technology, startups'
+  lines.push(`Your main niches on Threads: ${niches}. Lean into what performs in those categories.`)
   lines.push('Voice & rules:')
   lines.push(`- Maximum ${MAX_CHARS} characters. Aim for 1-3 short, punchy sentences.`)
   lines.push('- Sound like a witty, warm human on Threads today — casual, specific, a little funny. NEVER corporate, robotic, or like a news anchor.')
+  lines.push('- Match the energy of popular posts in your niche (especially AI/tech Threads): hooks, opinions, "just tried", questions — not press-release summaries.')
   lines.push('- Hook fast and invite engagement: a question, a hot take, or a relatable moment people want to reply to.')
   lines.push('- Light, tasteful emoji use is okay when it fits; never spam them.')
   lines.push('- No hashtags unless the style notes ask for them.')
   lines.push('- Never just summarize a headline — give a human reaction, opinion, joke, or question.')
+  const catHint = categoryVoiceHint(category)
+  if (catHint) lines.push(`- Niche voice for this post: ${catHint}`)
   if (kind === 'reply') {
     lines.push('- Replies must be SHORT (usually one sentence), warm, and specific to what the person actually said.')
   }
@@ -244,21 +291,27 @@ export async function generateAutopilotPost(input: AutopilotPostInput): Promise<
   if (missing) return { ok: false, text: '', message: missing }
   const ap = settings.autopilot
   const parts: string[] = []
+  const niche = input.category?.trim() || 'ai'
   const hasReference = input.kind === 'news' && Boolean(input.newsTitle)
   if (hasReference) {
     const src = input.newsSource ? ` (${input.newsSource})` : ''
-    const cat = input.category ? `${input.category} ` : ''
-    parts.push(`Write a Threads post reacting to this ${cat}headline: "${input.newsTitle}"${src}.`)
-    parts.push('Give ONE sharp, human angle, opinion, or joke about it — not a summary.')
+    parts.push(
+      `Write a native "${niche}" Threads post reacting to this headline: "${input.newsTitle}"${src}.`
+    )
+    parts.push(
+      'Give ONE sharp, human angle, opinion, or joke — the kind popular accounts in this niche post. Not a summary. Not a press release.'
+    )
   } else {
     parts.push(
-      `Write an ORIGINAL Threads post${input.category ? ` in the ${input.category} space` : ''} — relatable, funny, or human, the kind of thing that makes people reply.`
+      `Write an ORIGINAL Threads post in the popular "${niche}" niche — the kind of post that gets replies and quotes on Threads today.`
     )
-    parts.push('It does NOT have to be about news. Think shower-thought, hot take, tiny story, or a question to the timeline.')
+    parts.push(
+      'It does NOT have to be about news. Prefer shower-thought, hot take, "just tried X", tiny builder story, or a question to the timeline.'
+    )
   }
   if (input.angle) parts.push(`Suggested angle: ${input.angle}.`)
   parts.push(languageDirective(ap.postLanguage, settings.language, hasReference))
-  return runGeneration(settings, parts.join(' '), buildPersonaPrompt(settings, 'post'))
+  return runGeneration(settings, parts.join(' '), buildPersonaPrompt(settings, 'post', niche))
 }
 
 export interface AutopilotReplyInput {
@@ -340,11 +393,17 @@ function extractJsonObject(raw: string): unknown {
 
 /** Heuristic fallback plan when the model won't produce usable JSON. */
 function fallbackPlan(candidates: AutopilotCandidate[], maxPosts: number, originalRatio: number): AutopilotPlanItem[] {
+  const settings = getSettings()
+  const niches =
+    settings.autopilot.categories.length > 0
+      ? settings.autopilot.categories
+      : ['ai', 'technology', 'startups', 'productivity', 'humor']
   const items: AutopilotPlanItem[] = []
   for (let i = 0; i < maxPosts; i++) {
     const goOriginal = candidates.length === 0 || Math.random() * 100 < originalRatio
     if (goOriginal) {
-      const cat = candidates[i]?.category
+      // Prefer AI / first configured popular niche when inventing original posts.
+      const cat = candidates[i]?.category ?? niches[i % niches.length] ?? 'ai'
       items.push({ kind: 'original', category: cat })
     } else {
       const cand = candidates[i % candidates.length]
@@ -371,15 +430,18 @@ export async function decideAutopilotPlan(input: {
   const missing = unconfiguredMessage(settings.llm)
   if (missing) return { items: [], reasoning: missing, usedFallback: false }
 
+  const niches = ap.categories.length > 0 ? ap.categories.join(', ') : 'ai, technology, startups, productivity, humor'
   const system = [
     'You are the planning brain of an autonomous Threads account focused on audience growth.',
     `Goal: ${ap.goal.trim() || 'grow an engaged following.'}`,
-    `Niches: ${ap.categories.join(', ') || 'general'}.`,
+    `Niches (pick from these; bias toward popular Threads categories like AI when relevant): ${niches}.`,
+    'Prefer posts that would feel at home on popular niche timelines (especially AI Threads, tech builders, startups, productivity, humor).',
     `You have already posted ${input.postsToday} time(s) today and may post at most ${maxPosts} more right now.`,
     `Roughly ${ap.originalRatio}% of posts should be original/relatable/funny content (not tied to news); the rest can react to a headline.`,
+    'When kind is "original", set "category" to one of the niches above (prefer high-engagement ones like "ai" when it fits).',
     'Avoid spamming: it is completely fine — often best — to post fewer than the maximum, or nothing at all if nothing is worth it.',
     'Decide what to post right now. Respond with ONLY a JSON object, no prose, in exactly this shape:',
-    '{"reasoning":"one short sentence","posts":[{"kind":"news","index":0,"angle":"short angle"},{"kind":"original","category":"humor","angle":"short idea"}]}',
+    '{"reasoning":"one short sentence","posts":[{"kind":"news","index":0,"angle":"short angle"},{"kind":"original","category":"ai","angle":"short idea"}]}',
     'Use "index" only for kind "news", referencing a candidate index below. "posts" may be an empty array.',
   ].join('\n')
 

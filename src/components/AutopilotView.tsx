@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../store/appStore'
-import { AUTOPILOT_CATEGORIES } from '../types'
+import { AUTOPILOT_CATEGORIES, AUTOPILOT_DEFAULT_CATEGORIES, AUTOPILOT_POPULAR_CATEGORY_IDS } from '../types'
 import type { AppSettings, AutopilotSettings, PostLanguageMode } from '../types'
 import { timeAgo } from '../util/format'
 
@@ -104,12 +104,18 @@ export default function AutopilotView() {
         : [...form.categories, id],
     })
 
+  const selectPopular = () => edit({ categories: [...AUTOPILOT_DEFAULT_CATEGORIES] })
+  const selectAllPopular = () => edit({ categories: [...AUTOPILOT_POPULAR_CATEGORY_IDS] })
+
   const addCustomCat = () => {
     const c = customCat.trim().toLowerCase()
     if (!c) return
     if (!form.categories.includes(c)) edit({ categories: [...form.categories, c] })
     setCustomCat('')
   }
+
+  const popularCats = AUTOPILOT_CATEGORIES.filter((c) => c.popular)
+  const moreCats = AUTOPILOT_CATEGORIES.filter((c) => !c.popular)
 
   const nextRunLabel = (): string => {
     if (!running) return t('Paused', '일시정지')
@@ -237,10 +243,36 @@ export default function AutopilotView() {
           <div className="section">
             <div className="section-title">{t('Topics / niches', '주제 / 분야')}</div>
             <div className="section-desc">
-              {t('What the agent posts about. Pick as many as you like.', '에이전트가 다룰 주제입니다. 원하는 만큼 선택하세요.')}
+              {t(
+                'What the agent posts about. Popular Threads niches (AI, tech, builders…) are listed first — the agent writes in that niche’s native voice.',
+                '에이전트가 다룰 주제입니다. Threads에서 잘 되는 인기 분야(AI, 기술, 빌더 등)를 먼저 보여 주며, 해당 분야 톤으로 글을 씁니다.'
+              )}
+            </div>
+            <div className="row" style={{ marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn" onClick={selectPopular} type="button">
+                {t('Use popular defaults (AI-first)', '인기 기본값 (AI 우선)')}
+              </button>
+              <button className="btn" onClick={selectAllPopular} type="button">
+                {t('Select all popular', '인기 분야 전체 선택')}
+              </button>
+            </div>
+            <div className="ap-cat-group-label">{t('Popular on Threads', 'Threads 인기 분야')}</div>
+            <div className="row ap-chips">
+              {popularCats.map((c) => (
+                <button
+                  key={c.id}
+                  className={`chip selectable popular${form.categories.includes(c.id) ? ' on' : ''}`}
+                  onClick={() => toggleCategory(c.id)}
+                >
+                  {ko ? c.ko : c.en}
+                </button>
+              ))}
+            </div>
+            <div className="ap-cat-group-label" style={{ marginTop: 12 }}>
+              {t('More niches', '기타 분야')}
             </div>
             <div className="row ap-chips">
-              {AUTOPILOT_CATEGORIES.map((c) => (
+              {moreCats.map((c) => (
                 <button
                   key={c.id}
                   className={`chip selectable${form.categories.includes(c.id) ? ' on' : ''}`}

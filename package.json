@@ -1,10 +1,10 @@
 {
   "name": "autothreads-locallm",
   "productName": "AutoThreads",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "private": true,
-  "packageManager": "pnpm@11.7.0",
-  "description": "Automagical Threads automation desktop app: AI drafts, local LLM support, image search, replies, scheduling, and user-controlled publishing.",
+  "description": "Automagical Threads automation desktop app: AI drafts, Full-Auto agent, local LLM support, image search, replies, scheduling, and user-controlled publishing.",
+  "author": "Jimmy Park",
   "repository": {
     "type": "git",
     "url": "https://github.com/eisenjimmy/autoTHREADS.git"

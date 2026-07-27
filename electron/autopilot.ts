@@ -35,13 +35,42 @@ const AP_USED_LINKS = 'autopilotUsedLinks'
 const AP_ANSWERED = 'autopilotAnswered'
 const LOG_LIMIT = 80
 
-// Category id -> news search seed. '' means "original content only, no news".
+/**
+ * Category id → news search seed tuned for Threads-native niches.
+ * Empty string = original content only (no news scrape) — e.g. pure humor.
+ * Prefer queries that surface the kind of stories AI/tech Threads accounts riff on.
+ */
 const CATEGORY_QUERY: Record<string, string> = {
-  ai: 'artificial intelligence',
-  development: 'software development',
-  crypto: 'cryptocurrency',
-  movies: 'movies and tv',
+  ai: 'artificial intelligence AI ChatGPT OpenAI Claude Gemini LLM',
+  technology: 'technology gadgets software',
+  development: 'software engineering programming coding developers',
+  startups: 'startups founders venture capital',
+  productivity: 'productivity tools apps workflow',
+  sidehustle: 'side hustle freelancing indie hacker online business',
+  creator: 'creator economy influencers content creators monetization',
+  career: 'career advice remote work jobs tech careers',
+  crypto: 'cryptocurrency bitcoin ethereum web3',
+  finance: 'personal finance markets investing',
+  marketing: 'marketing growth hacking social media',
   humor: '',
+  gaming: 'video games gaming industry esports',
+  fitness: 'fitness workout health training',
+  business: 'business entrepreneurship companies',
+  science: 'science research breakthroughs',
+  health: 'health wellness medicine',
+  fashion: 'fashion style trends',
+  beauty: 'beauty skincare makeup',
+  lifestyle: 'lifestyle culture trends',
+  food: 'food restaurants cooking',
+  travel: 'travel destinations tourism',
+  sports: 'sports games leagues',
+  entertainment: 'entertainment celebrities culture',
+  music: 'music artists albums',
+  movies: 'movies TV shows streaming',
+  books: 'books authors reading',
+  design: 'design UX product design',
+  environment: 'climate environment sustainability',
+  education: 'education learning online courses',
 }
 
 let started = false
@@ -162,7 +191,12 @@ function categoryQuery(cat: string): string {
 /** Pull fresh (unused) headlines across the configured niches. */
 async function gatherCandidates(): Promise<RichCandidate[]> {
   const settings = getSettings()
-  const cats = (settings.autopilot.categories.length > 0 ? settings.autopilot.categories : ['technology']).slice(0, 6)
+  // Prefer configured niches; empty → popular AI-first defaults from settings.
+  const cats = (
+    settings.autopilot.categories.length > 0
+      ? settings.autopilot.categories
+      : ['ai', 'technology', 'startups', 'productivity', 'humor']
+  ).slice(0, 8)
   const used = new Set((db.get<string[]>(AP_USED_LINKS) ?? []).filter((x) => typeof x === 'string'))
   const out: RichCandidate[] = []
   let idx = 0
