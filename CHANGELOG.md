@@ -9,6 +9,18 @@ Session-level notes also live under `_changelog/`.
 
 ---
 
+## [0.2.1] — 2026-07-27
+
+### Changed
+
+- Full-Auto default **think interval** is now **1 minute** (was 60), so replies are checked every minute while launched.
+- Full-Auto default **max replies per day** is now **100** (was 40).
+- Interval validation/UI now allows a minimum of **1** minute (was 5).
+
+> Existing installs keep saved settings. In **Auto**, set interval to `1` and max replies/day to `100` if you already ran an older version, then **Save**.
+
+---
+
 ## [0.2.0] — 2026-07-27
 
 ### Highlights

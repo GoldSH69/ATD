@@ -402,10 +402,10 @@ export default function AutopilotView() {
                 <input
                   className="input"
                   type="number"
-                  min={5}
+                  min={1}
                   value={form.intervalMinutes}
                   onChange={(e) => edit({ intervalMinutes: e.target.valueAsNumber })}
-                  onBlur={() => edit({ intervalMinutes: num(form.intervalMinutes, 5, 1440, 60) })}
+                  onBlur={() => edit({ intervalMinutes: num(form.intervalMinutes, 1, 1440, 1) })}
                 />
               </div>
               <div className="field grow">
@@ -503,7 +503,7 @@ export default function AutopilotView() {
                       max={300}
                       value={form.maxRepliesPerDay}
                       onChange={(e) => edit({ maxRepliesPerDay: e.target.valueAsNumber })}
-                      onBlur={() => edit({ maxRepliesPerDay: num(form.maxRepliesPerDay, 1, 300, 40) })}
+                      onBlur={() => edit({ maxRepliesPerDay: num(form.maxRepliesPerDay, 1, 300, 100) })}
                     />
                   </div>
                 </div>
