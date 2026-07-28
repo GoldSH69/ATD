@@ -151,16 +151,20 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
   ]
 }
 
-function buildNaturalHumanPost(newsTitle: string, topic?: string): string {
+function buildNaturalHumanPost(newsTitle: string, topic?: string, snippet?: string): string {
   const title = cleanTitle(newsTitle)
+  const cleanSnippet = snippet ? cleanTitle(snippet).replace(/<[^>]+>/g, '').slice(0, 130) : ''
   const lowerTopic = (topic || '').toLowerCase()
 
   if (lowerTopic.includes('humor') || lowerTopic.includes('유머') || lowerTopic.includes('드립') || lowerTopic.includes('meme')) {
-    return `오늘 피드에서 유난히 핫한 유머 소식이네요! 🤣\n\n"${title}"\n\n바쁜 하루 끝에 소소하게 웃으면서 읽어보기 딱 좋네요 ㅋㅋㅋ\n\n다들 오늘 하루도 정말 수고 많으셨습니다! 재미있는 드립이나 짤 있으면 댓글로 알려주세요 😃`
+    const summary = cleanSnippet || '오늘 커뮤니티와 SNS에서 유난히 높은 조회수와 폭발적인 댓글 반응을 얻고 있는 재미있는 유머 소식입니다.'
+    return `📢 ${title}\n\n${summary}\n\n바쁜 하루 끝에 소소하게 터지며 웃어보기 딱 좋네요 ㅋㅋㅋ 유쾌한 기분 전해졌으면 좋겠습니다!\n\n다들 오늘 하루 수고 많으셨고, 재미있는 짤이나 드립 있으면 댓글로 공유해주세요 💬`
   }
 
-  return `요즘 빠르게 변화하는 IT/기술 분야 핫이슈네요! 🚀\n\n"${title}"\n\n앞으로 우리 시장과 일상에 어떤 변화를 가져올지 유심히 지켜볼 필요가 있어 보입니다.\n\n여러분은 이번 소식에 대해 어떻게 생각하시나요? 자유롭게 의견 나눠주세요!`
+  const summary = cleanSnippet || '최신 기술 동향과 시장 흐름이 빠르게 변화함에 따라 관련 서비스와 주요 지표들이 큰 주목을 받고 있는 뉴스입니다.'
+  return `📢 ${title}\n\n${summary}\n\n기존 방식과 달리 사용자 편의성을 높여주는 시도들이 이어져 앞으로의 변화가 더 기대됩니다 🚀\n\n여러분은 이번 소식에 대해 어떻게 생각하시나요? 자유롭게 의견을 나눠주세요 💬`
 }
+
 
 export function initWebFallbackApi() {
   if (typeof (window as unknown as { api?: unknown }).api !== 'undefined') {

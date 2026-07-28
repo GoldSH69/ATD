@@ -154,15 +154,19 @@ Goal: ${config.goal}
 Tone: ${config.toneNotes}
 Language: Korean (한국어)
 
-Write a short, engaging Threads post (under 300 characters) about this news story:
-Title: ${selectedNews.title}
-Source: ${selectedNews.source}
+Write a high-quality Threads post about this news story:
+Topic: ${category}
+News Title: ${selectedNews.title}
+News Source: ${selectedNews.source}
 
-Rules:
-1. Make it sound natural, human, and conversational.
-2. End with an open-ended question to invite comments.
-3. Do NOT use hashtags, emojis spam, or robotic corporate language.
-4. Output ONLY the post body text in Korean.`
+STRICT FORMATTING & CONTENT RULES:
+1. MUST fit within a single mobile Threads screen (under 400 characters).
+2. DO NOT just quote the title. Explain 2-3 concise, clear lines summarizing WHAT happened in the news so readers understand the core facts without clicking.
+3. Add 1-2 lines of human perspective or why this topic matters.
+4. End with 1 natural, friendly line inviting followers to comment and reply.
+5. NO robotic prefixes like "🤖 [AI 생성 포스트]". NO formal corporate jargon for casual/humor topics.
+6. Output ONLY the final post body text in Korean.`
+
 
   console.log('🤖 Generating post content with Gemini API...')
   try {
