@@ -35,7 +35,8 @@
   "creatorName": "Jimmy",
   "creatorHandle": "goldsh69",
   "creatorAddress": "마스터",
-  "autoReply": true,
+  "replyToAll": true,
   "replyToMentions": true,
+  "autoReply": true,
   "originalRatio": 0.8
 }

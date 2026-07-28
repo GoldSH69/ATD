@@ -14,10 +14,20 @@ interface ServerConfig {
   scheduleMode?: 'interval' | 'times'
   postingTimes?: string[]
   maxPostsPerDay?: number
+  maxRepliesPerDay?: number
   topics?: string[]
+  categories?: string[]
   originalRatio?: number
   toneNotes?: string
   agentName?: string
+  creatorName?: string
+  creatorHandle?: string
+  creatorAddress?: string
+  goal?: string
+  postLanguage?: string
+  replyToAll?: boolean
+  replyToMentions?: boolean
+  autoReply?: boolean
 }
 
 const defaultSettings: AppSettings = {
@@ -57,7 +67,7 @@ const defaultSettings: AppSettings = {
     goal: 'Threads 팔로워 및 참여도 극대화',
     categories: ['ai', 'technology', 'startups', 'relationships'],
     postLanguage: 'ko',
-    toneNotes: '친근하고 위트 있는 유저 어조',
+    toneNotes: '친근하고 위트 있는 유저 어조, 짧고 간결한 문장, 질문으로 끝맺음',
     maxPostsPerDay: 5,
     maxPostsPerRun: 1,
     originalRatio: 0.8,
@@ -261,7 +271,19 @@ export function initWebFallbackApi() {
         if (cfg && typeof cfg === 'object') {
           currentSettings.autopilot.enabled = typeof cfg.enabled === 'boolean' ? cfg.enabled : true
           currentSettings.autopilot.autoApprove = Boolean(cfg.autoApprove)
+          currentSettings.autopilot.replyToAll = typeof cfg.replyToAll === 'boolean' ? cfg.replyToAll : true
+          currentSettings.autopilot.replyToMentions = typeof cfg.replyToMentions === 'boolean' ? cfg.replyToMentions : true
+          currentSettings.autopilot.autoReply = typeof cfg.autoReply === 'boolean' ? cfg.autoReply : true
           currentSettings.autopilot.maxPostsPerDay = cfg.maxPostsPerDay || 5
+          currentSettings.autopilot.maxRepliesPerDay = cfg.maxRepliesPerDay || 20
+          currentSettings.autopilot.goal = cfg.goal || currentSettings.autopilot.goal
+          currentSettings.autopilot.postLanguage = (cfg.postLanguage as AppSettings['autopilot']['postLanguage']) || 'ko'
+          currentSettings.autopilot.toneNotes = cfg.toneNotes || currentSettings.autopilot.toneNotes
+          currentSettings.autopilot.agentName = cfg.agentName || currentSettings.autopilot.agentName
+          currentSettings.autopilot.creatorName = cfg.creatorName || currentSettings.autopilot.creatorName
+          currentSettings.autopilot.creatorHandle = cfg.creatorHandle || currentSettings.autopilot.creatorHandle
+          currentSettings.autopilot.creatorAddress = cfg.creatorAddress || currentSettings.autopilot.creatorAddress
+
           if (Array.isArray(cfg.topics)) {
             currentSettings.topics = cfg.topics
             currentSettings.autopilot.categories = cfg.topics
@@ -292,10 +314,20 @@ export function initWebFallbackApi() {
         scheduleMode: s.autopilot.scheduleMode || 'times',
         postingTimes: s.autopilot.postingTimes || ['06:00', '11:30', '15:00', '18:00', '21:00'],
         maxPostsPerDay: s.autopilot.maxPostsPerDay || 5,
+        maxRepliesPerDay: s.autopilot.maxRepliesPerDay || 20,
         topics: s.topics,
+        categories: s.topics,
         originalRatio: s.autopilot.originalRatio ?? 0.8,
         toneNotes: s.autopilot.toneNotes,
         agentName: s.autopilot.agentName,
+        creatorName: s.autopilot.creatorName,
+        creatorHandle: s.autopilot.creatorHandle,
+        creatorAddress: s.autopilot.creatorAddress,
+        goal: s.autopilot.goal,
+        postLanguage: s.autopilot.postLanguage,
+        replyToAll: s.autopilot.replyToAll,
+        replyToMentions: s.autopilot.replyToMentions,
+        autoReply: s.autopilot.autoReply,
       }
       
       const getRes = await fetch('https://api.github.com/repos/GoldSH69/ATD/contents/data/config.json')
@@ -309,7 +341,7 @@ export function initWebFallbackApi() {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              message: `config: update settings in real-time (${s.autopilot.enabled ? 'enabled: true' : 'enabled: false'}, autoApprove: ${s.autopilot.autoApprove})`,
+              message: `config: update all settings in real-time (${s.autopilot.enabled ? 'enabled: true' : 'enabled: false'}, autoApprove: ${s.autopilot.autoApprove})`,
               content: contentEncoded,
               sha: fileInfo.sha,
             }),
@@ -339,9 +371,25 @@ export function initWebFallbackApi() {
         const cfg: ServerConfig = await cfgRes.json()
         currentSettings.autopilot.enabled = typeof cfg.enabled === 'boolean' ? cfg.enabled : true
         currentSettings.autopilot.autoApprove = Boolean(cfg.autoApprove)
+        currentSettings.autopilot.replyToAll = typeof cfg.replyToAll === 'boolean' ? cfg.replyToAll : true
+        currentSettings.autopilot.replyToMentions = typeof cfg.replyToMentions === 'boolean' ? cfg.replyToMentions : true
+        currentSettings.autopilot.autoReply = typeof cfg.autoReply === 'boolean' ? cfg.autoReply : true
         currentSettings.autopilot.maxPostsPerDay = cfg.maxPostsPerDay || 5
+        currentSettings.autopilot.maxRepliesPerDay = cfg.maxRepliesPerDay || 20
+        currentSettings.autopilot.goal = cfg.goal || currentSettings.autopilot.goal
+        currentSettings.autopilot.postLanguage = (cfg.postLanguage as AppSettings['autopilot']['postLanguage']) || 'ko'
+        currentSettings.autopilot.toneNotes = cfg.toneNotes || currentSettings.autopilot.toneNotes
+        currentSettings.autopilot.agentName = cfg.agentName || currentSettings.autopilot.agentName
+        currentSettings.autopilot.creatorName = cfg.creatorName || currentSettings.autopilot.creatorName
+        currentSettings.autopilot.creatorHandle = cfg.creatorHandle || currentSettings.autopilot.creatorHandle
+        currentSettings.autopilot.creatorAddress = cfg.creatorAddress || currentSettings.autopilot.creatorAddress
+
         if (Array.isArray(cfg.topics)) {
           currentSettings.topics = cfg.topics
+          currentSettings.autopilot.categories = cfg.topics
+        }
+        if (typeof cfg.originalRatio === 'number') {
+          currentSettings.autopilot.originalRatio = cfg.originalRatio
         }
       }
     } catch {
