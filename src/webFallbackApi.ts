@@ -278,13 +278,18 @@ export function initWebFallbackApi() {
     const ONE_DAY_MS = 24 * 60 * 60 * 1000
     const now = Date.now()
     const postsToday = logs.filter(
-      (l) => l.kind === 'post' && now - l.at < ONE_DAY_MS && !l.message.includes('Dry-run')
+      (l) =>
+        l.kind === 'post' &&
+        now - l.at < ONE_DAY_MS &&
+        !l.message.includes('Dry-run') &&
+        !l.message.includes('초안') &&
+        !l.message.includes('Draft')
     ).length
     const repliesToday = logs.filter(
       (l) => l.kind === 'reply' && now - l.at < ONE_DAY_MS && !l.message.includes('Dry-run')
     ).length
 
-    const lastPost = logs.find((l) => l.kind === 'post')
+    const lastPost = logs.find((l) => l.kind === 'post' && !l.message.includes('초안'))
     const lastReply = logs.find((l) => l.kind === 'reply')
 
     return {
@@ -292,7 +297,7 @@ export function initWebFallbackApi() {
       goLive: currentSettings.autopilot.goLive,
       busy: false,
       postsToday,
-      maxPostsPerDay: currentSettings.autopilot.maxPostsPerDay || 6,
+      maxPostsPerDay: currentSettings.autopilot.maxPostsPerDay || 5,
       repliesToday,
       maxRepliesPerDay: currentSettings.autopilot.maxRepliesPerDay || 20,
       intervalMinutes: currentSettings.autopilot.intervalMinutes || 120,
@@ -336,9 +341,10 @@ export function initWebFallbackApi() {
     const newLog: LogEntry = {
       id: `${Date.now()}-runpass`,
       at: Date.now(),
-      kind: 'post',
-      message: `🚀 초안 생성 완료: "${postText.slice(0, 45)}..." (초안 탭에서 확인/게시 가능)`,
+      kind: 'info',
+      message: `📝 초안 생성 완료: "${postText.slice(0, 45)}..." (초안 탭에서 확인/게시 가능)`,
     }
+
 
     let localLogs: LogEntry[] = []
     try {
