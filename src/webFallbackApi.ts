@@ -47,7 +47,7 @@ const defaultSettings: AppSettings = {
   style: { notes: '', samples: [] },
   autoDraft: { enabled: false, intervalMinutes: 120, maxPerRun: 2 },
   autopilot: {
-    enabled: false,
+    enabled: true,
     goLive: true,
     autoApprove: false,
     scheduleMode: 'times',
@@ -259,7 +259,7 @@ export function initWebFallbackApi() {
       .then((r) => r.json())
       .then((cfg: ServerConfig) => {
         if (cfg && typeof cfg === 'object') {
-          currentSettings.autopilot.enabled = Boolean(cfg.enabled)
+          currentSettings.autopilot.enabled = typeof cfg.enabled === 'boolean' ? cfg.enabled : true
           currentSettings.autopilot.autoApprove = Boolean(cfg.autoApprove)
           currentSettings.autopilot.maxPostsPerDay = cfg.maxPostsPerDay || 5
           if (Array.isArray(cfg.topics)) {
@@ -283,8 +283,42 @@ export function initWebFallbackApi() {
     // Ignore
   }
 
-  const persistSettings = (s: AppSettings) => {
+  const persistSettings = async (s: AppSettings) => {
     currentSettings = s
+    try {
+      const configData: ServerConfig = {
+        enabled: s.autopilot.enabled,
+        autoApprove: s.autopilot.autoApprove,
+        scheduleMode: s.autopilot.scheduleMode || 'times',
+        postingTimes: s.autopilot.postingTimes || ['06:00', '11:30', '15:00', '18:00', '21:00'],
+        maxPostsPerDay: s.autopilot.maxPostsPerDay || 5,
+        topics: s.topics,
+        originalRatio: s.autopilot.originalRatio ?? 0.8,
+        toneNotes: s.autopilot.toneNotes,
+        agentName: s.autopilot.agentName,
+      }
+      
+      const getRes = await fetch('https://api.github.com/repos/GoldSH69/ATD/contents/data/config.json')
+      if (getRes.ok) {
+        const fileInfo = (await getRes.json()) as { sha?: string }
+        if (fileInfo.sha) {
+          const contentEncoded = btoa(unescape(encodeURIComponent(JSON.stringify(configData, null, 2))))
+          await fetch('https://api.github.com/repos/GoldSH69/ATD/contents/data/config.json', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: `config: update settings in real-time (${s.autopilot.enabled ? 'enabled: true' : 'enabled: false'}, autoApprove: ${s.autopilot.autoApprove})`,
+              content: contentEncoded,
+              sha: fileInfo.sha,
+            }),
+          })
+        }
+      }
+    } catch {
+      // Ignore network fallback
+    }
   }
 
   const getDynamicStatus = async (): Promise<AutopilotStatus> => {
@@ -303,7 +337,7 @@ export function initWebFallbackApi() {
       const cfgRes = await fetch('./data/config.json?t=' + Date.now())
       if (cfgRes.ok) {
         const cfg: ServerConfig = await cfgRes.json()
-        currentSettings.autopilot.enabled = Boolean(cfg.enabled)
+        currentSettings.autopilot.enabled = typeof cfg.enabled === 'boolean' ? cfg.enabled : true
         currentSettings.autopilot.autoApprove = Boolean(cfg.autoApprove)
         currentSettings.autopilot.maxPostsPerDay = cfg.maxPostsPerDay || 5
         if (Array.isArray(cfg.topics)) {
@@ -444,7 +478,7 @@ export function initWebFallbackApi() {
       return currentSettings
     },
     settingsSet: async (s: AppSettings) => {
-      persistSettings(s)
+      await persistSettings(s)
       return true
     },
     llmTest: async () => ({ ok: true, message: 'Gemini API Key가 GitHub Secrets에 연결되어 있습니다.' }),
@@ -516,7 +550,7 @@ export function initWebFallbackApi() {
     autopilotStatus: getDynamicStatus,
     autopilotSetRunning: async (running: boolean) => {
       currentSettings.autopilot.enabled = running
-      persistSettings(currentSettings)
+      await persistSettings(currentSettings)
       const st = await getDynamicStatus()
       return { ...st, running }
     },

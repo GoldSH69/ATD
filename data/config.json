@@ -1,8 +1,7 @@
 {
-  "enabled": false,
+  "enabled": true,
   "autoApprove": false,
   "scheduleMode": "times",
-
   "postingTimes": [
     "06:00",
     "11:30",
@@ -38,5 +37,5 @@
   "creatorAddress": "마스터",
   "autoReply": true,
   "replyToMentions": true,
-  "originalRatio": 0.3
+  "originalRatio": 0.8
 }
