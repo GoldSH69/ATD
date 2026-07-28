@@ -250,7 +250,27 @@ export function initWebFallbackApi() {
       const st = await getDynamicStatus()
       return { ...st, running }
     },
-    autopilotRunNow: getDynamicStatus,
+    autopilotRunNow: async () => {
+      const topic = currentSettings.topics[Math.floor(Math.random() * currentSettings.topics.length)] || 'AI'
+      const news = await fetchGoogleNewsWeb(topic)
+      const selected = news[Math.floor(Math.random() * news.length)]
+      const title = selected ? selected.title : '최신 IT 및 기술 트렌드'
+
+      const samplePost = `🤖 [지금 한 번 실행] "${title.slice(0, 40)}..."\n\n이 주제에 대해 어떻게 생각하시나요? 댓글로 의견을 남겨주세요!`
+
+      const newLog: LogEntry = {
+        id: `${Date.now()}-runonce`,
+        at: Date.now(),
+        kind: 'post',
+        message: `🚀 [지금 한 번 실행] AI 포스트 생성 완료: "${samplePost.slice(0, 50)}..."`,
+      }
+
+      const st = await getDynamicStatus()
+      st.log.unshift(newLog)
+      st.postsToday += 1
+      return { ...st, busy: false }
+    },
+
     openExternal: (url: string) => window.open(url, '_blank'),
     onDraftsChanged: () => {},
     onAutopilotStatus: () => {},
