@@ -10,6 +10,7 @@ export declare function generateReplyDraft(input: {
     replyText: string;
     replyUsername: string;
     rootPostText: string;
+    kind?: 'reply' | 'mention';
 }): Promise<GenerateResult>;
 /** One auto-draft pass: next topic (round-robin), fresh news, drafts. Never throws. */
 export declare function runAutoDraft(): Promise<number>;
@@ -27,6 +28,8 @@ export interface AutopilotReplyInput {
     rootPostText: string;
     contextText?: string;
     isCreator: boolean;
+    /** 'mention' = @mention; 'discover' = cold reply on a public post; default = reply on yours. */
+    kind?: 'reply' | 'mention' | 'discover';
 }
 export declare function generateAutopilotReply(input: AutopilotReplyInput): Promise<GenerateResult>;
 export interface AutopilotCandidate {

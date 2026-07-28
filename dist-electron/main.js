@@ -118,13 +118,15 @@ electron_1.app.whenReady().then(() => {
     electron_1.ipcMain.handle('autopilot:set-running', async (_e, running) => {
         const settings = (0, settings_1.getSettings)();
         await (0, settings_1.setSettings)({ ...settings, autopilot: { ...settings.autopilot, enabled: running === true } });
-        // Launching clears the last-run stamp so the first pass fires on the next tick
-        // (within ~30s) instead of waiting a full interval.
-        if (running === true)
+        // Launch: reset BOTH post and reply timers so first checks fire immediately
+        // (not after a full interval). Reply checks are independent of posts.
+        if (running === true) {
             await localdb_1.db.set('autopilotLastRun', 0);
-        const status = (0, autopilot_1.buildAutopilotStatus)();
-        broadcastAutopilot(status);
-        return status;
+            await localdb_1.db.set('autopilotLastReplyRun', 0);
+            // Kick immediately so replies/mentions run now (don't wait for the poll).
+            void (0, autopilot_1.runAutopilotNow)();
+        }
+        return (0, autopilot_1.buildAutopilotStatus)();
     });
     electron_1.ipcMain.handle('autopilot:run-now', () => (0, autopilot_1.runAutopilotNow)());
     electron_1.ipcMain.handle('llm:test', (_e, llm) => (0, llm_1.testLlm)(llm));
@@ -155,11 +157,23 @@ electron_1.app.whenReady().then(() => {
             return { ok: false, replies: [], message: 'Threads API is not configured — save credentials in Settings first.' };
         }
         try {
-            const replies = await (0, threadsApi_1.fetchUnansweredReplies)(threads);
-            return { ok: true, replies, message: '' };
+            // Always include @mentions for the Replies page + Full-Auto.
+            const { replies, mentionError } = await (0, threadsApi_1.fetchUnansweredEngagement)(threads, {
+                includeMentions: true,
+            });
+            const mentionCount = replies.filter((r) => r.kind === 'mention').length;
+            const replyCount = replies.length - mentionCount;
+            let message = '';
+            if (mentionError)
+                message = mentionError;
+            else if (replies.length === 0)
+                message = '';
+            else
+                message = `${replyCount} reply(ies), ${mentionCount} mention(s)`;
+            return { ok: true, replies, message, mentionError: mentionError ?? null };
         }
         catch (err) {
-            return { ok: false, replies: [], message: errMsg(err) };
+            return { ok: false, replies: [], message: errMsg(err), mentionError: null };
         }
     });
     electron_1.ipcMain.handle('news:fetch', (_e, input) => {

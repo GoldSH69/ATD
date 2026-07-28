@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.AUTOPILOT_DEFAULT_CATEGORIES = void 0;
 exports.defaultSettings = defaultSettings;
 exports.defaultAutopilot = defaultAutopilot;
 exports.getSettings = getSettings;
@@ -13,7 +14,7 @@ const localdb_1 = require("./localdb");
  * changed), the secret degrades to '' so the user just re-enters it.
  */
 const ENC_PREFIX = 'enc:v1:';
-const DEFAULT_THREADS_SCOPES = 'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies';
+const DEFAULT_THREADS_SCOPES = 'threads_basic,threads_content_publish,threads_read_replies,threads_manage_replies,threads_manage_mentions,threads_keyword_search';
 function defaultSettings() {
     return {
         theme: 'dark',
@@ -44,27 +45,47 @@ function defaultSettings() {
         autopilot: defaultAutopilot(),
     };
 }
+/** Popular Threads niches used when Full-Auto has no categories selected. AI-first. */
+exports.AUTOPILOT_DEFAULT_CATEGORIES = ['ai', 'technology', 'startups', 'productivity', 'humor'];
 function defaultAutopilot() {
     return {
         enabled: false,
         goLive: true,
-        intervalMinutes: 60,
-        goal: 'Grow an engaged Threads following by posting relatable, timely, human-sounding takes that spark replies and likes.',
-        categories: ['technology', 'ai', 'startups'],
+        intervalMinutes: 60, // how often to plan/post
+        replyIntervalMinutes: 5, // replies + @mentions run on a separate, faster timer
+        goal: 'Grow an engaged Threads following with posts that feel native to popular Threads niches — especially AI, tech, builders, and hot takes people actually reply to.',
+        categories: [...exports.AUTOPILOT_DEFAULT_CATEGORIES],
         postLanguage: 'match',
         toneNotes: '',
         maxPostsPerDay: 6,
         maxPostsPerRun: 1,
-        originalRatio: 35,
+        originalRatio: 40,
         agentName: '',
         creatorName: '',
         creatorHandle: '',
         creatorAddress: 'Master',
         replyToAll: true,
+        replyToMentions: true,
         autoReply: true,
-        maxRepliesPerRun: 5,
-        maxRepliesPerDay: 40,
+        maxRepliesPerRun: 15, // allow multiple replies in an ongoing thread per tick
+        maxRepliesPerDay: 100,
+        sporadicPosts: true, // post "here and there" instead of every single tick
+        engageDiscover: false, // opt-in: reply to random public posts in niches
+        maxDiscoverRepliesPerRun: 2,
+        maxDiscoverRepliesPerDay: 20,
     };
+}
+/** Ensure newer scopes are present when the user still has an older default string. */
+function ensureMentionScope(scopes) {
+    const parts = scopes
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    if (!parts.includes('threads_manage_mentions'))
+        parts.push('threads_manage_mentions');
+    if (!parts.includes('threads_keyword_search'))
+        parts.push('threads_keyword_search');
+    return parts.join(',');
 }
 function encryptSecret(value) {
     if (!value || value.startsWith(ENC_PREFIX))
@@ -193,7 +214,7 @@ function normalize(raw) {
             appId: str(raw.threads?.appId, '').trim(),
             appSecret: str(raw.threads?.appSecret, ''),
             redirectUri: str(raw.threads?.redirectUri, d.threads.redirectUri).trim() || d.threads.redirectUri,
-            scopes: str(raw.threads?.scopes, d.threads.scopes).trim() || d.threads.scopes,
+            scopes: ensureMentionScope(str(raw.threads?.scopes, d.threads.scopes).trim() || d.threads.scopes),
             tokenExpiresAt: typeof raw.threads?.tokenExpiresAt === 'number' && Number.isFinite(raw.threads.tokenExpiresAt)
                 ? raw.threads.tokenExpiresAt
                 : null,
@@ -219,14 +240,20 @@ function clampInt(v, min, max, fallback) {
 function normalizeAutopilot(raw, d) {
     const r = (raw ?? {});
     const categories = strArr(r.categories)
-        .map((c) => c.trim())
+        .map((c) => c.trim().toLowerCase())
         .filter(Boolean);
     return {
         enabled: r.enabled === true,
         goLive: typeof r.goLive === 'boolean' ? r.goLive : d.goLive,
-        intervalMinutes: clampInt(r.intervalMinutes, 5, 1440, d.intervalMinutes),
+        intervalMinutes: clampInt(r.intervalMinutes, 1, 1440, d.intervalMinutes),
+        replyIntervalMinutes: clampInt(r.replyIntervalMinutes, 1, 1440, d.replyIntervalMinutes),
         goal: str(r.goal, d.goal),
-        categories: Array.isArray(r.categories) ? categories : d.categories,
+        // Empty list falls back to popular Threads niches (AI-first defaults).
+        categories: Array.isArray(r.categories)
+            ? categories.length > 0
+                ? categories
+                : [...exports.AUTOPILOT_DEFAULT_CATEGORIES]
+            : d.categories,
         postLanguage: postLanguageMode(r.postLanguage, d.postLanguage),
         toneNotes: str(r.toneNotes, ''),
         maxPostsPerDay: clampInt(r.maxPostsPerDay, 1, 96, d.maxPostsPerDay),
@@ -237,9 +264,14 @@ function normalizeAutopilot(raw, d) {
         creatorHandle: str(r.creatorHandle, '').trim().replace(/^@+/, '').slice(0, 80),
         creatorAddress: str(r.creatorAddress, d.creatorAddress).slice(0, 60),
         replyToAll: typeof r.replyToAll === 'boolean' ? r.replyToAll : d.replyToAll,
+        replyToMentions: typeof r.replyToMentions === 'boolean' ? r.replyToMentions : d.replyToMentions,
         autoReply: typeof r.autoReply === 'boolean' ? r.autoReply : d.autoReply,
         maxRepliesPerRun: clampInt(r.maxRepliesPerRun, 1, 25, d.maxRepliesPerRun),
         maxRepliesPerDay: clampInt(r.maxRepliesPerDay, 1, 300, d.maxRepliesPerDay),
+        sporadicPosts: typeof r.sporadicPosts === 'boolean' ? r.sporadicPosts : d.sporadicPosts,
+        engageDiscover: typeof r.engageDiscover === 'boolean' ? r.engageDiscover : d.engageDiscover,
+        maxDiscoverRepliesPerRun: clampInt(r.maxDiscoverRepliesPerRun, 0, 10, d.maxDiscoverRepliesPerRun),
+        maxDiscoverRepliesPerDay: clampInt(r.maxDiscoverRepliesPerDay, 0, 100, d.maxDiscoverRepliesPerDay),
     };
 }
 function getSettings() {

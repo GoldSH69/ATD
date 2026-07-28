@@ -18,27 +18,63 @@ const pipeline_1 = require("./pipeline");
  * same draft store + publisher the manual workflow uses, so autopilot activity
  * is visible in Drafts/Queue and shares the publish guards.
  */
-const TICK_MS = 30_000;
-const FIRST_TICK_MS = 8_000;
+const TICK_MS = 10_000; // poll often so 5-min reply timer and 1-min retries fire promptly
+const FIRST_TICK_MS = 3_000;
+const RETRY_AFTER_MS = 60_000; // failed posts/replies re-attempt after 1 minute
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const AP_DAY = 'autopilotDay';
 const AP_POSTS = 'autopilotPostsToday';
 const AP_REPLIES = 'autopilotRepliesToday';
-const AP_LAST_RUN = 'autopilotLastRun';
+const AP_LAST_RUN = 'autopilotLastRun'; // last post/think pass
+const AP_LAST_REPLY_RUN = 'autopilotLastReplyRun'; // last replies+mentions pass
 const AP_LOG = 'autopilotLog';
 const AP_USED_LINKS = 'autopilotUsedLinks';
 const AP_ANSWERED = 'autopilotAnswered';
+const AP_DISCOVER_ANSWERED = 'autopilotDiscoverAnswered';
+const AP_DISCOVER_DAY = 'autopilotDiscoverDay';
+const AP_DISCOVER_COUNT = 'autopilotDiscoverToday';
 const LOG_LIMIT = 80;
-// Category id -> news search seed. '' means "original content only, no news".
+/**
+ * Category id → news search seed tuned for Threads-native niches.
+ * Empty string = original content only (no news scrape) — e.g. pure humor.
+ * Prefer queries that surface the kind of stories AI/tech Threads accounts riff on.
+ */
 const CATEGORY_QUERY = {
-    ai: 'artificial intelligence',
-    development: 'software development',
-    crypto: 'cryptocurrency',
-    movies: 'movies and tv',
+    ai: 'artificial intelligence AI ChatGPT OpenAI Claude Gemini LLM',
+    technology: 'technology gadgets software',
+    development: 'software engineering programming coding developers',
+    startups: 'startups founders venture capital',
+    productivity: 'productivity tools apps workflow',
+    sidehustle: 'side hustle freelancing indie hacker online business',
+    creator: 'creator economy influencers content creators monetization',
+    career: 'career advice remote work jobs tech careers',
+    crypto: 'cryptocurrency bitcoin ethereum web3',
+    finance: 'personal finance markets investing',
+    marketing: 'marketing growth hacking social media',
     humor: '',
+    gaming: 'video games gaming industry esports',
+    fitness: 'fitness workout health training',
+    business: 'business entrepreneurship companies',
+    science: 'science research breakthroughs',
+    health: 'health wellness medicine',
+    fashion: 'fashion style trends',
+    beauty: 'beauty skincare makeup',
+    lifestyle: 'lifestyle culture trends',
+    food: 'food restaurants cooking',
+    travel: 'travel destinations tourism',
+    sports: 'sports games leagues',
+    entertainment: 'entertainment celebrities culture',
+    music: 'music artists albums',
+    movies: 'movies TV shows streaming',
+    books: 'books authors reading',
+    design: 'design UX product design',
+    environment: 'climate environment sustainability',
+    education: 'education learning online courses',
 };
 let started = false;
-let busy = false;
+/** Independent locks so a long post/LLM pass never blocks the reply timer. */
+let postBusy = false;
+let replyBusy = false;
 let logSeq = 0;
 let statusListener = null;
 function setAutopilotStatusListener(cb) {
@@ -46,9 +82,20 @@ function setAutopilotStatusListener(cb) {
 }
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const dayKey = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD (local)
+const isBusy = () => postBusy || replyBusy;
 function getInt(key) {
     const v = localdb_1.db.get(key);
     return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+/** Schedule the next pass ~1 minute from now (for failures). */
+async function scheduleRetry(kind) {
+    const ap = (0, settings_1.getSettings)().autopilot;
+    const intervalMin = kind === 'post' ? ap.intervalMinutes : ap.replyIntervalMinutes;
+    const key = kind === 'post' ? AP_LAST_RUN : AP_LAST_REPLY_RUN;
+    // lastRun = now - interval + 1min  →  due again after 1 minute
+    const stamp = Date.now() - intervalMin * 60_000 + RETRY_AFTER_MS;
+    await localdb_1.db.set(key, stamp);
+    log('info', `${kind === 'post' ? 'Post' : 'Reply'} failure — will retry in ~1 minute.`);
 }
 /** Reset the per-day counters when the local date rolls over. */
 function rolloverDaily() {
@@ -85,20 +132,29 @@ function buildAutopilotStatus() {
     const posts = sameDay ? getInt(AP_POSTS) : 0;
     const replies = sameDay ? getInt(AP_REPLIES) : 0;
     const lastRunAt = localdb_1.db.get(AP_LAST_RUN) ?? null;
+    const lastReplyRunAt = localdb_1.db.get(AP_LAST_REPLY_RUN) ?? null;
+    const repliesEnabled = ap.replyToAll || ap.replyToMentions || ap.engageDiscover;
     const nextRunAt = ap.enabled
-        ? (lastRunAt ?? Date.now()) + ap.intervalMinutes * 60_000
+        ? (typeof lastRunAt === 'number' ? lastRunAt : Date.now()) + ap.intervalMinutes * 60_000
+        : null;
+    const nextReplyRunAt = ap.enabled && repliesEnabled
+        ? (typeof lastReplyRunAt === 'number' ? lastReplyRunAt : Date.now()) +
+            ap.replyIntervalMinutes * 60_000
         : null;
     return {
         running: ap.enabled,
         goLive: ap.goLive,
-        busy,
+        busy: isBusy(),
         postsToday: posts,
         maxPostsPerDay: ap.maxPostsPerDay,
         repliesToday: replies,
         maxRepliesPerDay: ap.maxRepliesPerDay,
         intervalMinutes: ap.intervalMinutes,
+        replyIntervalMinutes: ap.replyIntervalMinutes,
         lastRunAt: typeof lastRunAt === 'number' ? lastRunAt : null,
         nextRunAt,
+        lastReplyRunAt: typeof lastReplyRunAt === 'number' ? lastReplyRunAt : null,
+        nextReplyRunAt,
         llmReady: (0, pipeline_1.unconfiguredMessage)(settings.llm) === null,
         threadsReady: Boolean(settings.threads.accessToken),
         log: readLog(),
@@ -120,20 +176,28 @@ function startAutopilot() {
     setInterval(() => void maybeTick(), TICK_MS);
 }
 async function maybeTick() {
-    if (busy)
-        return;
     const ap = (0, settings_1.getSettings)().autopilot;
     if (!ap.enabled)
         return;
-    const lastRun = localdb_1.db.get(AP_LAST_RUN) ?? 0;
-    if (Date.now() - lastRun < ap.intervalMinutes * 60_000)
-        return;
-    await runAutopilotPass('scheduled');
+    const now = Date.now();
+    const lastPost = localdb_1.db.get(AP_LAST_RUN) ?? 0;
+    const lastReply = localdb_1.db.get(AP_LAST_REPLY_RUN) ?? 0;
+    // lastRun === 0 means "fire now" (launch / forced reset)
+    const duePosts = !postBusy && (lastPost === 0 || now - lastPost >= ap.intervalMinutes * 60_000);
+    // Reply timer also drives @mentions and optional discover engagement.
+    const repliesOn = ap.replyToAll || ap.replyToMentions || ap.engageDiscover;
+    const dueReplies = !replyBusy &&
+        repliesOn &&
+        (lastReply === 0 || now - lastReply >= ap.replyIntervalMinutes * 60_000);
+    // Fire independently — a long post plan must not block the reply timer.
+    if (duePosts)
+        void runAutopilotPass('scheduled', { posts: true, replies: false });
+    if (dueReplies)
+        void runAutopilotPass('scheduled', { posts: false, replies: true });
 }
-/** Force one pass immediately (the "Run once now" button). Ignores the interval. */
+/** Force one pass immediately (the "Run once now" button). Ignores the intervals. */
 async function runAutopilotNow() {
-    if (!busy)
-        await runAutopilotPass('manual');
+    await runAutopilotPass('manual', { posts: true, replies: true });
     return buildAutopilotStatus();
 }
 function categoryQuery(cat) {
@@ -144,7 +208,10 @@ function categoryQuery(cat) {
 /** Pull fresh (unused) headlines across the configured niches. */
 async function gatherCandidates() {
     const settings = (0, settings_1.getSettings)();
-    const cats = (settings.autopilot.categories.length > 0 ? settings.autopilot.categories : ['technology']).slice(0, 6);
+    // Prefer configured niches; empty → popular AI-first defaults from settings.
+    const cats = (settings.autopilot.categories.length > 0
+        ? settings.autopilot.categories
+        : ['ai', 'technology', 'startups', 'productivity', 'humor']).slice(0, 8);
     const used = new Set((localdb_1.db.get(AP_USED_LINKS) ?? []).filter((x) => typeof x === 'string'));
     const out = [];
     let idx = 0;
@@ -194,6 +261,14 @@ async function runPostPhase(postsToday) {
         log('skip', `Daily post budget reached (${postsToday}/${ap.maxPostsPerDay}).`);
         return 0;
     }
+    // "Here and there" — randomly skip some ticks so the account doesn't post like a clock.
+    if (ap.sporadicPosts) {
+        // ~45% chance to skip this post tick (still runs replies/mentions separately).
+        if (Math.random() < 0.45) {
+            log('skip', 'Sporadic posts: sitting this one out (looks more human).');
+            return 0;
+        }
+    }
     const rich = await gatherCandidates();
     const slim = rich.map((c) => ({
         index: c.index,
@@ -239,15 +314,21 @@ async function runPostPhase(postsToday) {
         const res = await commitDraft(draft, ap.goLive);
         if (cand?.link)
             markUsedLink(cand.link);
-        created++;
-        void localdb_1.db.set(AP_POSTS, postsToday + created);
         const preview = gen.text.length > 60 ? gen.text.slice(0, 59) + '…' : gen.text;
-        if (!ap.goLive)
+        if (!ap.goLive) {
+            created++;
+            void localdb_1.db.set(AP_POSTS, postsToday + created);
             log('post', `Drafted (review): ${preview}`);
-        else if (res.ok)
+        }
+        else if (res.ok) {
+            created++;
+            void localdb_1.db.set(AP_POSTS, postsToday + created);
             log('post', `Posted: ${preview}`, res.permalink);
-        else
+        }
+        else {
             log('error', `Publish failed: ${res.message}`);
+            await scheduleRetry('post');
+        }
     }
     return created;
 }
@@ -284,31 +365,85 @@ async function fetchReplyContext(replyText, rootText) {
 async function runReplyPhase(repliesToday) {
     const settings = (0, settings_1.getSettings)();
     const ap = settings.autopilot;
-    if (!ap.replyToAll)
+    if (!ap.replyToAll && !ap.replyToMentions && !ap.engageDiscover) {
+        log('skip', 'Reply scanning is off (enable replies, @mentions, and/or discover).');
         return 0;
+    }
     const remainingDay = ap.maxRepliesPerDay - repliesToday;
     if (remainingDay <= 0) {
         log('skip', `Daily reply budget reached (${repliesToday}/${ap.maxRepliesPerDay}).`);
         return 0;
     }
-    let replies;
-    try {
-        replies = await (0, threadsApi_1.fetchUnansweredReplies)(settings.threads);
-    }
-    catch (err) {
-        log('error', `Could not fetch replies: ${err instanceof Error ? err.message : String(err)}`);
-        return 0;
+    let sent = 0;
+    let failures = 0;
+    let replies = [];
+    if (ap.replyToAll || ap.replyToMentions) {
+        try {
+            log('info', `Scanning replies${ap.replyToMentions ? ' + @mentions' : ''}…`);
+            const fetched = await (0, threadsApi_1.fetchUnansweredEngagement)(settings.threads, {
+                includeMentions: ap.replyToMentions,
+            });
+            if (fetched.mentionError) {
+                log('error', fetched.mentionError);
+            }
+            replies = fetched.replies;
+        }
+        catch (err) {
+            log('error', `Could not fetch replies/mentions: ${err instanceof Error ? err.message : String(err)}`);
+            await scheduleRetry('reply');
+            // Still try discover if enabled.
+            if (ap.engageDiscover) {
+                return runDiscoverPhase(repliesToday);
+            }
+            return 0;
+        }
+        replies = replies.filter((r) => {
+            const kind = r.kind ?? 'reply';
+            if (kind === 'mention')
+                return ap.replyToMentions;
+            return ap.replyToAll;
+        });
+        const mentionN = replies.filter((r) => r.kind === 'mention').length;
+        const replyN = replies.length - mentionN;
+        log('info', `Inbox: ${replyN} unanswered reply(ies), ${mentionN} @mention(s).`);
     }
     const answered = new Set((localdb_1.db.get(AP_ANSWERED) ?? []).filter((x) => typeof x === 'string'));
-    const localReplyIds = new Set((0, drafts_1.allDrafts)().filter((d) => d.kind === 'reply' && d.replyToId).map((d) => d.replyToId));
+    // Only block targets we already successfully posted (or are posting right now).
+    // Failed drafts must NOT block retries — that was why replies stopped after one error.
+    const blockedIds = new Set((0, drafts_1.allDrafts)()
+        .filter((d) => d.kind === 'reply' &&
+        d.replyToId &&
+        (d.status === 'posted' || d.status === 'posting' || (d.status === 'draft' && !(ap.goLive && ap.autoReply))))
+        .map((d) => d.replyToId));
     const handle = ap.creatorHandle.trim().toLowerCase();
     const budget = Math.min(ap.maxRepliesPerRun, remainingDay);
-    let sent = 0;
+    log('info', `Found ${replies.length} candidate reply/mention(s).`);
     for (const r of replies) {
         if (sent >= budget)
             break;
-        if (answered.has(r.id) || localReplyIds.has(r.id))
+        if (answered.has(r.id) || blockedIds.has(r.id))
             continue;
+        const kind = r.kind === 'mention' ? 'mention' : 'reply';
+        const label = kind === 'mention' ? 'mention' : 'reply';
+        // Retry an existing failed draft for this target instead of re-generating.
+        const failedExisting = (0, drafts_1.allDrafts)().find((d) => d.kind === 'reply' && d.replyToId === r.id && d.status === 'failed');
+        if (failedExisting) {
+            const res = await (0, scheduler_1.postDraftNow)(failedExisting.id);
+            if (res.ok) {
+                answered.add(r.id);
+                void localdb_1.db.set(AP_ANSWERED, [...answered].slice(-1000));
+                sent++;
+                void localdb_1.db.set(AP_REPLIES, repliesToday + sent);
+                const fresh = (0, drafts_1.allDrafts)().find((d) => d.id === failedExisting.id);
+                log('reply', `Retried ${label} to @${r.username}.`, fresh?.permalink);
+            }
+            else {
+                failures++;
+                log('error', `${label} retry failed (@${r.username}): ${res.message}`);
+            }
+            await delay(800);
+            continue;
+        }
         const isCreator = handle !== '' && r.username.trim().toLowerCase() === handle;
         const contextText = await fetchReplyContext(r.text, r.rootPostText);
         const gen = await (0, pipeline_1.generateAutopilotReply)({
@@ -317,9 +452,11 @@ async function runReplyPhase(repliesToday) {
             rootPostText: r.rootPostText,
             contextText,
             isCreator,
+            kind,
         });
         if (!gen.ok) {
-            log('error', `Reply generation failed (@${r.username}): ${gen.message}`);
+            failures++;
+            log('error', `${kind === 'mention' ? 'Mention' : 'Reply'} generation failed (@${r.username}): ${gen.message}`);
             continue;
         }
         const now = Date.now();
@@ -330,32 +467,165 @@ async function runReplyPhase(repliesToday) {
             replyToId: r.id,
             replyToText: r.text,
             replyToUsername: r.username,
+            topic: kind === 'mention' ? 'mention' : undefined,
             status: 'draft',
             createdAt: now,
             updatedAt: now,
         };
         const publishReply = ap.goLive && ap.autoReply;
         const res = await commitDraft(draft, publishReply);
-        answered.add(r.id);
-        void localdb_1.db.set(AP_ANSWERED, [...answered].slice(-1000));
-        sent++;
-        void localdb_1.db.set(AP_REPLIES, repliesToday + sent);
-        if (!publishReply)
-            log('reply', `Drafted reply to @${r.username} (review).`);
-        else if (res.ok)
-            log('reply', `Replied to @${r.username}.`, res.permalink);
-        else
-            log('error', `Reply publish failed (@${r.username}): ${res.message}`);
-        await delay(800); // gentle pacing so a burst of replies doesn't trip rate limits
+        if (!publishReply) {
+            // Draft-only: treat as handled so we don't re-draft every tick.
+            answered.add(r.id);
+            void localdb_1.db.set(AP_ANSWERED, [...answered].slice(-1000));
+            sent++;
+            void localdb_1.db.set(AP_REPLIES, repliesToday + sent);
+            log('reply', `Drafted ${label} to @${r.username} (review).`);
+        }
+        else if (res.ok) {
+            answered.add(r.id);
+            void localdb_1.db.set(AP_ANSWERED, [...answered].slice(-1000));
+            sent++;
+            void localdb_1.db.set(AP_REPLIES, repliesToday + sent);
+            log('reply', `Replied to ${label} from @${r.username}.`, res.permalink);
+        }
+        else {
+            // Keep target eligible for retry — do NOT add to answered.
+            failures++;
+            log('error', `${label} publish failed (@${r.username}): ${res.message}`);
+        }
+        await delay(800);
     }
-    if (sent === 0)
-        log('info', 'No new replies to answer.');
+    if (sent === 0 && failures === 0)
+        log('info', 'No new replies or mentions to answer.');
+    if (failures > 0)
+        await scheduleRetry('reply');
+    // Optional: join random public threads in your niches (keyword search).
+    if (ap.engageDiscover) {
+        const discovered = await runDiscoverPhase(repliesToday + sent);
+        sent += discovered;
+    }
     return sent;
 }
-async function runAutopilotPass(reason) {
-    if (busy)
+/** Reply to a few random public posts found via keyword search in configured niches. */
+async function runDiscoverPhase(repliesTodaySoFar) {
+    const settings = (0, settings_1.getSettings)();
+    const ap = settings.autopilot;
+    if (!ap.engageDiscover || ap.maxDiscoverRepliesPerRun <= 0)
+        return 0;
+    const today = dayKey();
+    if (localdb_1.db.get(AP_DISCOVER_DAY) !== today) {
+        void localdb_1.db.set(AP_DISCOVER_DAY, today);
+        void localdb_1.db.set(AP_DISCOVER_COUNT, 0);
+    }
+    const discoverToday = getInt(AP_DISCOVER_COUNT);
+    const remainingDiscover = ap.maxDiscoverRepliesPerDay - discoverToday;
+    const remainingGlobal = ap.maxRepliesPerDay - repliesTodaySoFar;
+    const budget = Math.min(ap.maxDiscoverRepliesPerRun, remainingDiscover, remainingGlobal);
+    if (budget <= 0) {
+        log('skip', 'Discover reply budget reached for today.');
+        return 0;
+    }
+    const cats = ap.categories.length > 0 ? ap.categories : ['ai', 'technology', 'startups', 'productivity'];
+    // Pick 1–2 niche keywords for this tick.
+    const shuffled = [...cats].sort(() => Math.random() - 0.5).slice(0, 2);
+    const usedDiscover = new Set((localdb_1.db.get(AP_DISCOVER_ANSWERED) ?? []).filter((x) => typeof x === 'string'));
+    const myHandle = (settings.threads.username || '').toLowerCase();
+    const candidates = [];
+    for (const cat of shuffled) {
+        const q = categoryQuery(cat) || cat;
+        if (!q)
+            continue;
+        // Use a short keyword (first 1–3 words) for better search quality.
+        const keyword = q.split(/\s+/).slice(0, 3).join(' ');
+        const res = await (0, threadsApi_1.searchKeywordPosts)(settings.threads, keyword, 12);
+        if (!res.ok) {
+            log('error', `Discover search "${keyword}": ${res.message}`);
+            continue;
+        }
+        for (const p of res.posts) {
+            if (usedDiscover.has(p.id))
+                continue;
+            if (myHandle && p.username.toLowerCase() === myHandle)
+                continue;
+            candidates.push({ id: p.id, text: p.text, username: p.username });
+        }
+    }
+    if (candidates.length === 0) {
+        log('info', 'Discover: no fresh public posts found for this tick.');
+        return 0;
+    }
+    // Random sample.
+    const picks = [...candidates].sort(() => Math.random() - 0.5).slice(0, budget);
+    log('info', `Discover: engaging ${picks.length} public post(s) in niches [${shuffled.join(', ')}].`);
+    let sent = 0;
+    let failures = 0;
+    for (const p of picks) {
+        const gen = await (0, pipeline_1.generateAutopilotReply)({
+            replyText: p.text,
+            replyUsername: p.username,
+            rootPostText: p.text,
+            isCreator: false,
+            kind: 'discover',
+        });
+        if (!gen.ok) {
+            failures++;
+            log('error', `Discover reply gen failed (@${p.username}): ${gen.message}`);
+            continue;
+        }
+        const now = Date.now();
+        const draft = {
+            id: crypto.randomUUID(),
+            kind: 'reply',
+            text: gen.text,
+            replyToId: p.id,
+            replyToText: p.text,
+            replyToUsername: p.username,
+            topic: 'discover',
+            status: 'draft',
+            createdAt: now,
+            updatedAt: now,
+        };
+        const publish = ap.goLive && ap.autoReply;
+        const res = await commitDraft(draft, publish);
+        usedDiscover.add(p.id);
+        void localdb_1.db.set(AP_DISCOVER_ANSWERED, [...usedDiscover].slice(-500));
+        if (!publish) {
+            sent++;
+            log('reply', `Drafted discover reply to @${p.username}.`);
+        }
+        else if (res.ok) {
+            sent++;
+            log('reply', `Discover replied to @${p.username}.`, res.permalink);
+        }
+        else {
+            failures++;
+            log('error', `Discover publish failed (@${p.username}): ${res.message}`);
+        }
+        await delay(1000);
+    }
+    if (sent > 0) {
+        void localdb_1.db.set(AP_DISCOVER_COUNT, discoverToday + sent);
+        void localdb_1.db.set(AP_REPLIES, getInt(AP_REPLIES) + sent);
+    }
+    if (failures > 0)
+        await scheduleRetry('reply');
+    return sent;
+}
+async function runAutopilotPass(reason, phases) {
+    if (!phases.posts && !phases.replies)
         return;
-    busy = true;
+    // Independent locks: post work and reply work can overlap.
+    if (phases.posts && postBusy)
+        phases = { ...phases, posts: false };
+    if (phases.replies && replyBusy)
+        phases = { ...phases, replies: false };
+    if (!phases.posts && !phases.replies)
+        return;
+    if (phases.posts)
+        postBusy = true;
+    if (phases.replies)
+        replyBusy = true;
     broadcastStatus();
     try {
         const settings = (0, settings_1.getSettings)();
@@ -368,17 +638,42 @@ async function runAutopilotPass(reason) {
             log('error', 'Threads API is not configured — add an access token in Settings.');
             return;
         }
-        await localdb_1.db.set(AP_LAST_RUN, Date.now());
         const { posts, replies } = rolloverDaily();
-        log('info', `Thinking… (${reason}) — ${posts}/${settings.autopilot.maxPostsPerDay} posts, ${replies}/${settings.autopilot.maxRepliesPerDay} replies today.`);
-        await runPostPhase(posts);
-        await runReplyPhase(getInt(AP_REPLIES));
+        const parts = [];
+        if (phases.posts)
+            parts.push('posts');
+        if (phases.replies)
+            parts.push('replies/mentions');
+        log('info', `${parts.join(' + ')} (${reason}) — ${posts}/${settings.autopilot.maxPostsPerDay} posts, ${replies}/${settings.autopilot.maxRepliesPerDay} replies today.`);
+        const now = Date.now();
+        // Run phases (possibly both). Stamp each timer when that phase starts.
+        const jobs = [];
+        if (phases.posts) {
+            jobs.push((async () => {
+                await localdb_1.db.set(AP_LAST_RUN, now);
+                await runPostPhase(posts);
+            })());
+        }
+        if (phases.replies) {
+            jobs.push((async () => {
+                await localdb_1.db.set(AP_LAST_REPLY_RUN, now);
+                await runReplyPhase(getInt(AP_REPLIES));
+            })());
+        }
+        await Promise.all(jobs);
     }
     catch (err) {
         log('error', `Autopilot pass failed: ${err instanceof Error ? err.message : String(err)}`);
+        if (phases.replies)
+            await scheduleRetry('reply');
+        if (phases.posts)
+            await scheduleRetry('post');
     }
     finally {
-        busy = false;
+        if (phases.posts)
+            postBusy = false;
+        if (phases.replies)
+            replyBusy = false;
         broadcastStatus();
     }
 }

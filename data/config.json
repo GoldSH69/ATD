@@ -1,0 +1,32 @@
+{
+  "enabled": true,
+  "intervalMinutes": 120,
+  "replyIntervalMinutes": 30,
+  "maxPostsPerDay": 6,
+  "maxRepliesPerDay": 20,
+  "maxPostsPerRun": 1,
+  "maxRepliesPerRun": 3,
+  "goal": "Threads 팔로워 및 참여도 극대화",
+  "topics": [
+    "AI",
+    "기술",
+    "스타트업",
+    "생산성",
+    "자기계발"
+  ],
+  "categories": [
+    "ai",
+    "technology",
+    "startups",
+    "productivity"
+  ],
+  "postLanguage": "ko",
+  "toneNotes": "친근하고 위트 있는 유저 어조, 짧고 간결한 문장, 질문으로 끝맺음",
+  "agentName": "AutoThreads Bot",
+  "creatorName": "Jimmy",
+  "creatorHandle": "goldsh69",
+  "creatorAddress": "마스터",
+  "autoReply": true,
+  "replyToMentions": true,
+  "originalRatio": 0.3
+}

@@ -7,10 +7,12 @@ const settings_1 = require("./settings");
 const drafts_1 = require("./drafts");
 const threadsApi_1 = require("./threadsApi");
 const pipeline_1 = require("./pipeline");
-const TICK_MS = 30_000;
+const TICK_MS = 15_000;
 const FIRST_TICK_MS = 5_000;
 const LAST_RUN_KEY = 'autoDraftLastRun';
 const MAX_CHARS = 500;
+/** Failed drafts (post or reply) are retried after this delay. */
+const FAILED_RETRY_MS = 60_000;
 let started = false;
 // Posting and auto-drafting have independent guards so a slow auto-draft run
 // (a local model can take minutes) never delays a due scheduled post.
@@ -45,21 +47,41 @@ async function recoverInterrupted() {
         console.error('[scheduler] recovery failed', err);
     }
 }
+function isRetryableFailed(d) {
+    if (d.status !== 'failed')
+        return false;
+    const updated = typeof d.updatedAt === 'number' ? d.updatedAt : 0;
+    if (Date.now() - updated < FAILED_RETRY_MS)
+        return false;
+    // Permanent validation errors — don't spin forever.
+    const err = (d.error ?? '').toLowerCase();
+    if (/empty|exceeds the \d+-character|missing the post/i.test(err))
+        return false;
+    return true;
+}
 async function tickPosting() {
     if (postingInFlight)
         return;
     postingInFlight = true;
     try {
         const due = (0, drafts_1.allDrafts)().filter(isDue);
-        for (const d of due) {
+        const retries = (0, drafts_1.allDrafts)().filter(isRetryableFailed);
+        const queue = [...due, ...retries];
+        for (const d of queue) {
             // Re-check against the live cache: the user may have unscheduled or edited
             // this draft while an earlier publish in this loop was awaiting.
             const cur = (0, drafts_1.allDrafts)().find((x) => x.id === d.id);
-            if (!cur || !isDue(cur))
+            if (!cur)
+                continue;
+            if (cur.status === 'scheduled' && !isDue(cur))
+                continue;
+            if (cur.status === 'failed' && !isRetryableFailed(cur))
+                continue;
+            if (cur.status !== 'scheduled' && cur.status !== 'failed')
                 continue;
             const res = await postDraftNow(d.id);
             if (!res.ok)
-                console.error(`[scheduler] scheduled post ${d.id} failed: ${res.message}`);
+                console.error(`[scheduler] publish ${d.id} failed: ${res.message}`);
         }
     }
     catch (err) {

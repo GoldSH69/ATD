@@ -561,6 +561,24 @@ OAuth 설정은 고급 옵션으로 남아 있지만, 데스크톱 사용자는 
 - 🚫 렌더러는 직접 파일시스템이나 외부 API에 접근하지 않습니다.
 - 🔗 모든 외부 링크는 시스템 브라우저에서 열립니다.
 
+## ☁️ 100% 무료 24/7 GitHub Actions 무인 자동화 설정 (PC 켜두지 않아도 작동)
+
+PC를 켜두지 않아도 깃허브 서버에서 24시간 동안 정해진 주기마다 자동으로 뉴스를 스크랩하여 Threads 포스트를 발행할 수 있습니다.
+
+### 준비물 (비용 $0)
+1. **Google Gemini API Key** (무료): [Google AI Studio](https://aistudio.google.com/)에서 1분만에 무료 키 발급 (일 1,500회 무료)
+2. **Threads Access Token** (무료): Meta Developers에서 발급받은 Access Token
+
+### 설정 방법
+1. 깃허브 레포지토리 (`https://github.com/GoldSH69/ATD`) 로 접속합니다.
+2. **Settings → Secrets and variables → Actions** 로 이동합니다.
+3. **New repository secret** 버튼을 눌러 아래 비밀키를 등록합니다:
+   - `GEMINI_API_KEY`: Google AI Studio에서 발급받은 API 키
+   - `THREADS_ACCESS_TOKEN`: Threads Graph API 액세스 토큰
+   - `THREADS_USER_ID`: 본인의 Threads User ID (선택 사항, 기본값 `me`)
+4. **Actions** 탭에서 `24/7 AutoThreads Bot` 이 2시간마다 자동으로 작동합니다! (Actions 탭에서 `Run workflow`로 수동 테스트 가능)
+5. **Settings → Pages** 에서 Source를 **GitHub Actions**로 변경하면 React 대시보드 웹사이트도 무료로 배포됩니다.
+
 ## 라이선스
 
 [MIT](LICENSE)

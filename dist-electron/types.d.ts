@@ -64,6 +64,7 @@ export interface AutopilotSettings {
     enabled: boolean;
     goLive: boolean;
     intervalMinutes: number;
+    replyIntervalMinutes: number;
     goal: string;
     categories: string[];
     postLanguage: PostLanguageMode;
@@ -76,9 +77,19 @@ export interface AutopilotSettings {
     creatorHandle: string;
     creatorAddress: string;
     replyToAll: boolean;
+    replyToMentions: boolean;
     autoReply: boolean;
     maxRepliesPerRun: number;
     maxRepliesPerDay: number;
+    /** Skip some post ticks at random so the feed feels less robotic ("here and there"). */
+    sporadicPosts: boolean;
+    /**
+     * Reply to random public posts found via keyword search in your niches.
+     * Needs threads_keyword_search on the token (public results need advanced access).
+     */
+    engageDiscover: boolean;
+    maxDiscoverRepliesPerRun: number;
+    maxDiscoverRepliesPerDay: number;
 }
 export type AutopilotLogKind = 'post' | 'reply' | 'skip' | 'error' | 'info';
 export interface AutopilotLogEntry {
@@ -97,8 +108,11 @@ export interface AutopilotStatus {
     repliesToday: number;
     maxRepliesPerDay: number;
     intervalMinutes: number;
+    replyIntervalMinutes: number;
     lastRunAt: number | null;
     nextRunAt: number | null;
+    lastReplyRunAt: number | null;
+    nextReplyRunAt: number | null;
     llmReady: boolean;
     threadsReady: boolean;
     log: AutopilotLogEntry[];
@@ -164,6 +178,8 @@ export interface ThreadsPost {
     timestamp: string;
     permalink?: string;
 }
+/** Where the inbound message came from. */
+export type EngagementKind = 'reply' | 'mention';
 export interface UnansweredReply {
     id: string;
     text: string;
@@ -171,6 +187,8 @@ export interface UnansweredReply {
     timestamp: string;
     rootPostId: string;
     rootPostText: string;
+    /** 'reply' = comment on your post; 'mention' = someone @mentioned you. Defaults to reply. */
+    kind?: EngagementKind;
 }
 export interface TestResult {
     ok: boolean;
