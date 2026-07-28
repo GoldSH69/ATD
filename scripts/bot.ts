@@ -6,6 +6,7 @@ import { publishPost, type ThreadsConfig } from './services/threads'
 
 interface Config {
   enabled: boolean
+  goLive: boolean
   intervalMinutes: number
   maxPostsPerDay: number
   maxRepliesPerDay: number
@@ -19,6 +20,7 @@ interface Config {
   creatorHandle: string
   autoReply: boolean
 }
+
 
 interface LogEntry {
   id: string
@@ -171,6 +173,12 @@ Rules:
 
     if (isDryRun || !threadsAccessToken) {
       addLog('post', `[Dry-run / Preview] ${postText.slice(0, 80)}...`)
+    } else if (config.goLive === false) {
+      console.log('📝 Draft-only mode is enabled (goLive: false). Skipping live publication.')
+      addLog('info', `📝 [Draft Mode / 컨펌 대기] AI가 포스트를 생성했습니다: "${postText.slice(0, 60)}..."`)
+      usedArticles.push(selectedNews.title)
+      if (usedArticles.length > 200) usedArticles = usedArticles.slice(-200)
+      fs.writeFileSync(usedArticlesPath, JSON.stringify(usedArticles, null, 2))
     } else {
       console.log('🚀 Publishing post to Threads API...')
       const threadsConfig: ThreadsConfig = {
@@ -185,6 +193,7 @@ Rules:
       if (usedArticles.length > 200) usedArticles = usedArticles.slice(-200)
       fs.writeFileSync(usedArticlesPath, JSON.stringify(usedArticles, null, 2))
     }
+
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err)
     addLog('error', `Failed to generate or publish post: ${errorMsg}`)
