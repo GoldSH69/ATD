@@ -20,27 +20,25 @@ export default function StatusBar() {
           : llm.provider === 'other'
             ? llm.other.model || 'custom'
             : llm.local.model
-  const llmReady =
-    llm.provider === 'local'
-      ? Boolean(llm.local.baseUrl)
-      : llm.provider === 'other'
-        ? Boolean(llm.other.baseUrl)
-        : Boolean(llm[llm.provider].apiKey)
-  const threadsReady = Boolean(settings.threads.accessToken)
+  const isWebMode = typeof (window as unknown as { electron?: unknown }).electron === 'undefined'
+  const llmReady = isWebMode || Boolean(llm[llm.provider]?.apiKey) || Boolean(llm.local?.baseUrl)
+  const threadsReady = isWebMode || Boolean(settings.threads.accessToken)
   const scheduled = drafts.filter((d) => d.status === 'scheduled').length
   const failed = drafts.filter((d) => d.status === 'failed').length
 
   return (
+
     <footer className="statusbar">
       <span className="status-item">
-        LLM: {llm.provider} · {model}
-        {!llmReady && ` (${text.notConfigured})`}
+        LLM: {llm.provider || 'gemini'} · {model || 'gemini-2.5-flash'}
+        {llmReady ? ' (GitHub Secrets 연동)' : ` (${text.notConfigured})`}
       </span>
       <span className="status-sep">|</span>
       <span className="status-item">
-        Threads: {threadsReady ? settings.threads.username ? `@${settings.threads.username}` : text.configured : text.notConfigured}
+        Threads: {threadsReady ? (settings.threads.username ? `@${settings.threads.username}` : 'GitHub Secrets 연동') : text.notConfigured}
       </span>
       <span className="grow" />
+
       {autopilot?.running && (
         <button
           className="status-item link"
