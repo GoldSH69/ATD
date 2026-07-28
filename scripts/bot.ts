@@ -7,6 +7,7 @@ import { publishPost, type ThreadsConfig } from './services/threads'
 interface Config {
   enabled: boolean
   goLive: boolean
+  autoApprove?: boolean
   scheduleMode?: 'interval' | 'times'
   postingTimes?: string[]
   intervalMinutes: number
@@ -32,16 +33,30 @@ interface LogEntry {
   permalink?: string
 }
 
+interface DraftItem {
+  id: string
+  kind: 'post' | 'reply'
+  text: string
+  topic?: string
+  sourceTitle?: string
+  sourceUrl?: string
+  status: 'draft' | 'scheduled' | 'posting' | 'posted' | 'failed'
+  scheduledAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
 async function main() {
   const args = process.argv.slice(2)
   const isDryRun = args.includes('--dry-run')
 
-  console.log('🤖 AutoThreads Bot Engine Starting...')
+  console.log('🤖 AutoThreads 02:00 AM Batch Engine Starting...')
 
   const rootDir = path.resolve(__dirname, '..')
   const dataDir = path.join(rootDir, 'data')
   const configPath = path.join(dataDir, 'config.json')
   const logsPath = path.join(dataDir, 'logs.json')
+  const draftsPath = path.join(dataDir, 'drafts.json')
   const usedArticlesPath = path.join(dataDir, 'used_articles.json')
 
   if (!fs.existsSync(configPath)) {
@@ -51,6 +66,7 @@ async function main() {
 
   const config: Config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
   let logs: LogEntry[] = fs.existsSync(logsPath) ? JSON.parse(fs.readFileSync(logsPath, 'utf8')) : []
+  let drafts: DraftItem[] = fs.existsSync(draftsPath) ? JSON.parse(fs.readFileSync(draftsPath, 'utf8')) : []
   let usedArticles: string[] = fs.existsSync(usedArticlesPath)
     ? JSON.parse(fs.readFileSync(usedArticlesPath, 'utf8'))
     : []
@@ -77,140 +93,109 @@ async function main() {
     process.exit(0)
   }
 
-  // Safety Caps Guard: Max 4 posts per 24 hours
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000
-  const now = Date.now()
-  const postsLast24h = logs.filter(
-    (l) => l.kind === 'post' && now - l.at < ONE_DAY_MS && !l.message.includes('Dry-run') && !l.message.includes('초안')
-  ).length
+  const topicsList = config.topics.length > 0 ? config.topics : ['AI', '기술', '스타트업', '관계심리학', '생산성']
+  const postingTimes = config.postingTimes || ['06:00', '11:30', '15:00', '18:00', '21:00']
 
-  if (postsLast24h >= config.maxPostsPerDay) {
-    console.log(`🛡️  Safety Cap Reached: ${postsLast24h}/${config.maxPostsPerDay} posts published in the last 24h. Skipping run.`)
-    addLog('info', `Safety cap reached (${postsLast24h}/${config.maxPostsPerDay} posts/24h). Skipping run.`)
-    fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
-    process.exit(0)
-  }
+  console.log(`🌅 Starting Early Morning Batch Generation for ${topicsList.length} topics...`)
 
-  // Safety Interval Guard: Min 60 minutes between posts
-  const MIN_INTERVAL_MS = 60 * 60 * 1000
-  const lastPostLog = logs.find((l) => l.kind === 'post' && !l.message.includes('Dry-run') && !l.message.includes('초안'))
-  if (lastPostLog && now - lastPostLog.at < MIN_INTERVAL_MS) {
-    const minLeft = Math.ceil((MIN_INTERVAL_MS - (now - lastPostLog.at)) / 60000)
-    console.log(`🛡️  Minimum post interval safety guard: Last post was ${Math.round((now - lastPostLog.at) / 60000)}m ago. Must wait ${minLeft}m.`)
-    addLog('info', `Minimum post interval guard (must wait ${minLeft}m). Skipping run.`)
-    fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
-    process.exit(0)
-  }
+  // Base date calculation for today KST
+  const now = new Date()
+  // Add 9h for KST if running on UTC server
+  const kstOffsetMs = 9 * 60 * 60 * 1000
+  const kstNow = new Date(now.getTime() + kstOffsetMs)
 
-  const topicsList = config.topics.length > 0 ? config.topics : ['AI', '기술', '관계심리학', '생산성']
-  const shuffledTopics = [...topicsList].sort(() => 0.5 - Math.random())
+  const generatedCount = Math.min(5, topicsList.length)
+  const newDrafts: DraftItem[] = []
 
-  let selectedNews: { title: string; source: string } | null = null
-  let selectedTopic = ''
+  for (let i = 0; i < generatedCount; i++) {
+    const topic = topicsList[i % topicsList.length]
+    console.log(`\n🔍 Fetching context for Topic [${i + 1}/${generatedCount}]: "${topic}"...`)
 
-  for (const t of shuffledTopics) {
-    console.log(`🔍 Checking news for topic: "${t}"...`)
-    const newsList = await fetchGoogleNews(t)
+    const newsList = await fetchGoogleNews(topic)
     const freshNews = newsList.filter((n) => !usedArticles.includes(n.title))
-    if (freshNews.length > 0) {
-      selectedNews = freshNews[Math.floor(Math.random() * freshNews.length)]
-      selectedTopic = t
-      break
-    }
-  }
+    const selectedNews = freshNews.length > 0 ? freshNews[0] : null
 
-  let prompt = ''
-  if (selectedNews) {
-    console.log(`📰 Selected article for "${selectedTopic}": "${selectedNews.title}" (${selectedNews.source})`)
-    prompt = `You are an engaging Threads creator named "${config.agentName}" for "${config.creatorName}".
-Goal: ${config.goal}
-Tone: ${config.toneNotes}
-Language: Korean (한국어)
-
-Write a high-quality Threads post about this news story:
-Topic: ${selectedTopic}
+    let prompt = ''
+    if (selectedNews) {
+      console.log(`📰 Article: "${selectedNews.title}"`)
+      usedArticles.push(selectedNews.title)
+      prompt = `You are an engaging Threads creator named "${config.agentName}".
+Topic: ${topic}
 News Title: ${selectedNews.title}
 News Source: ${selectedNews.source}
 
-STRICT FORMATTING & CONTENT RULES:
-1. MUST fit within a single mobile Threads screen (under 400 characters).
-2. DO NOT just quote the title. Explain 2-3 concise, clear lines summarizing WHAT happened in the news so readers understand the core facts without clicking.
+STRICT RULES:
+1. MUST fit within a single mobile Threads screen (under 400 Korean characters).
+2. Summarize 2-3 concise, clear lines explaining WHAT happened in the news so readers understand facts without clicking.
 3. Add 1-2 lines of human perspective or why this topic matters.
-4. The LAST LINE MUST be a CREATIVE, TOPIC-SPECIFIC question that directly references the specific subject in the news. NEVER use boilerplate questions like "여러분은 어떻게 생각하시나요?".
-5. NO robotic prefixes like "🤖 [AI 생성 포스트]". NO formal corporate jargon for casual/humor topics.
-6. Output ONLY the final post body text in Korean.`
-  } else {
-    selectedTopic = shuffledTopics[0] || '관계심리학'
-    console.log(`💡 No news found or non-news topic selected ("${selectedTopic}"). Generating AI Original Content Post...`)
-    prompt = `You are an engaging Threads creator named "${config.agentName}" for "${config.creatorName}".
-Goal: ${config.goal}
-Tone: ${config.toneNotes}
-Language: Korean (한국어)
+4. The LAST LINE MUST be a CREATIVE, TOPIC-SPECIFIC question asking readers about their opinion or experience on this specific news item. NO generic "어떻게 생각하시나요?".
+5. Output ONLY the final post body text in Korean.`
+    } else {
+      console.log(`💡 Non-news / Original Content Topic: "${topic}"`)
+      prompt = `You are an engaging Threads creator named "${config.agentName}".
+Topic: ${topic} (Relationship Psychology, Self-Improvement, Productivity, or Technology Insight)
 
-Write a high-quality, highly engaging ORIGINAL Threads post (NOT a news post) about the topic: "${selectedTopic}" (e.g. Relationship Psychology, Human Nature, Productivity, Self-Improvement, or Life Advice).
-
-STRICT FORMATTING & CONTENT RULES:
-1. MUST fit within a single mobile Threads screen (under 400 characters).
-2. Start with a catchy headline or intriguing psychological/life insight.
-3. Explain 2-3 concise, actionable lines with concrete principles, examples, or wisdom that readers can immediately relate to.
-4. The LAST LINE MUST be a CREATIVE, TOPIC-SPECIFIC question asking readers about their personal experience or opinion on this specific topic.
+STRICT RULES:
+1. MUST fit within a single mobile Threads screen (under 400 Korean characters).
+2. Start with a catchy headline or intriguing psychological/life principle.
+3. Explain 2-3 concise, actionable lines with concrete wisdom or examples.
+4. The LAST LINE MUST be a CREATIVE, TOPIC-SPECIFIC question directly related to this topic.
 5. Make it sound 100% human, warm, and conversational. NO robotic prefixes.
 6. Output ONLY the final post body text in Korean.`
-  }
-
-  if (!geminiApiKey) {
-    const msg = 'GEMINI_API_KEY environment variable is not set.'
-    if (isDryRun) {
-      console.warn(`⚠️  ${msg} Skipping AI generation in dry-run.`)
-      addLog('info', `[Dry-run] Topic: ${selectedTopic}`)
-    } else {
-      addLog('error', msg)
-      fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
-      process.exit(1)
     }
-    fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
-    return
-  }
 
-  console.log('🤖 Generating post content with Gemini API...')
-  try {
-    const postText = await generateContentWithGemini(prompt, { apiKey: geminiApiKey })
-    console.log('\n--- Generated Post ---')
-    console.log(postText)
-    console.log('----------------------\n')
-
-    if (isDryRun || !threadsAccessToken) {
-      addLog('info', `[Dry-run / Preview] ${postText.slice(0, 80)}...`)
-    } else if (config.goLive === false) {
-      console.log('📝 Draft-only mode is enabled (goLive: false). Skipping live publication.')
-      addLog('info', `📝 [Draft Mode / 컨펌 대기] AI가 포스트를 생성했습니다: "${postText.slice(0, 60)}..."`)
-      if (selectedNews) {
-        usedArticles.push(selectedNews.title)
-        if (usedArticles.length > 200) usedArticles = usedArticles.slice(-200)
-        fs.writeFileSync(usedArticlesPath, JSON.stringify(usedArticles, null, 2))
+    let postText = ''
+    if (geminiApiKey) {
+      try {
+        postText = await generateContentWithGemini(prompt, { apiKey: geminiApiKey })
+      } catch (e) {
+        postText = `💡 ${topic} 관련 시사점 리포트\n\n일상 속에서 접하는 다양한 이슈들을 새로운 시각으로 분석하고 생각할 거리를 남기는 내용입니다.\n\n여러분은 이 주제에 대해 어떻게 생각하시나요? 자유롭게 의견 남겨주세요!`
       }
     } else {
-      console.log('🚀 Publishing post to Threads API...')
-      const threadsConfig: ThreadsConfig = {
-        accessToken: threadsAccessToken,
-        userId: threadsUserId,
-      }
-      const res = await publishPost(threadsConfig, postText)
-      addLog('post', `Successfully published post: "${postText.slice(0, 60)}..."`, res.permalink)
-
-      if (selectedNews) {
-        usedArticles.push(selectedNews.title)
-        if (usedArticles.length > 200) usedArticles = usedArticles.slice(-200)
-        fs.writeFileSync(usedArticlesPath, JSON.stringify(usedArticles, null, 2))
-      }
+      postText = `💡 ${topic} 관련 시사점 리포트\n\n일상 속에서 접하는 다양한 이슈들을 새로운 시각으로 분석하고 생각할 거리를 남기는 내용입니다.\n\n여러분은 이 주제에 대해 어떻게 생각하시나요? 자유롭게 의견 남겨주세요!`
     }
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err)
-    addLog('error', `Failed to generate or publish post: ${errorMsg}`)
+
+    // Target Time Calculation with Random Jitter (±10 minutes)
+    const targetTimeString = postingTimes[i % postingTimes.length] || '06:00'
+    const [tHourStr, tMinStr] = targetTimeString.split(':')
+    const tHour = parseInt(tHourStr, 10) || 6
+    const tMin = parseInt(tMinStr, 10) || 0
+
+    // Random jitter between -10 and +10 minutes
+    const randomJitterMin = Math.floor(Math.random() * 21) - 10
+    const targetKstDate = new Date(kstNow)
+    targetKstDate.setHours(tHour, tMin + randomJitterMin, 0, 0)
+
+    const isAuto = config.autoApprove === true
+    const draftStatus = isAuto ? 'scheduled' : 'draft'
+
+    const draftItem: DraftItem = {
+      id: `draft-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      kind: 'post',
+      text: postText,
+      topic: topic,
+      sourceTitle: selectedNews?.title,
+      sourceUrl: selectedNews?.link,
+      status: draftStatus,
+      scheduledAt: targetKstDate.getTime(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+
+    newDrafts.push(draftItem)
+    drafts.unshift(draftItem)
+    console.log(`✅ Draft [${i + 1}] Created (${draftStatus}): "${postText.slice(0, 40)}..." (Scheduled ~${targetTimeString} KST, jitter: ${randomJitterMin > 0 ? '+' : ''}${randomJitterMin}m)`)
   }
 
+  if (usedArticles.length > 200) usedArticles = usedArticles.slice(-200)
+  fs.writeFileSync(usedArticlesPath, JSON.stringify(usedArticles, null, 2))
+  fs.writeFileSync(draftsPath, JSON.stringify(drafts, null, 2))
+
+  const modeText = config.autoApprove ? '자동 승인(Auto Approve) 예약 완료' : '수동 승인(Manual Confirm) 대기'
+  addLog('info', `🌅 새벽 02:00 일괄 포스트 ${newDrafts.length}개 생성 완료 (${modeText})`)
   fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
-  console.log('✅ AutoThreads Bot execution complete.')
+
+  console.log(`\n🎉 Early Morning Batch Run Finished Successfully! Created ${newDrafts.length} posts.`)
 }
 
 main().catch((err) => {

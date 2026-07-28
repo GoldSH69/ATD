@@ -44,10 +44,12 @@ export interface AutoDraftSettings {
 export interface AutopilotSettings {
   enabled: boolean
   goLive: boolean
+  autoApprove?: boolean
   scheduleMode?: 'interval' | 'times'
   postingTimes?: string[]
   intervalMinutes: number
   replyIntervalMinutes: number
+
 
   goal: string
   categories: string[]

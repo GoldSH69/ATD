@@ -492,18 +492,53 @@ export default function AutopilotView() {
                   lineHeight: '1.5',
                 }}>
                   <div style={{ fontWeight: 600, color: '#ffa000', marginBottom: '6px' }}>
-                    💡 깃허브 서버 지연 보상 가이드 (한국시간 KST 기준)
+                    💡 새벽 02:00 일괄 생성 & 정시 가동 시스템 (한국시간 KST 기준)
                   </div>
                   <div>
-                    목표 한국시간(KST)을 설정하면, 깃허브 서버의 지연을 보상하기 위해 <b>3시간 일찍(KST -3시간)</b> 깃허브 서버에서 출발하여 정시 부근에 포스팅이 완료됩니다.
+                    매일 새벽 02:00 KST에 하루치 5개 포스트를 일괄 자동 생성하고, 설정하신 지정 시각에 맞춰 <b>무작위 분(Minute) 노이즈(±10분)</b>를 섞어 사람처럼 자연스럽게 올립니다.
                   </div>
                   <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '6px', fontSize: '12px', fontFamily: 'monospace' }}>
                     <div>• 목표 시각 (KST): 06:00 | 11:30 | 15:00 | 18:00 | 21:00</div>
-                    <div style={{ color: '#4caf50' }}>• 3시간전 출발 (KST): 03:00 | 08:30 | 12:00 | 15:00 | 18:00</div>
+                    <div style={{ color: '#4caf50' }}>• 실제 발송 시각: 무작위 노이즈 적용 (예: 05:52, 11:38, 15:07, 18:14, 21:03)</div>
                   </div>
                 </div>
               )}
             </div>
+
+            <div className="field" style={{ marginBottom: '16px' }}>
+              <span className="field-label" style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px', display: 'block' }}>
+                {t('Approval Mode', '승인 처리 모드 선택')}
+              </span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div
+                  onClick={() => edit({ autoApprove: false })}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '10px',
+                    border: `2px solid ${!form.autoApprove ? '#0070f3' : 'var(--border-color, #333)'}`,
+                    background: !form.autoApprove ? 'rgba(0, 112, 243, 0.08)' : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>🙋‍♂️ {t('Manual Confirm Mode', '수동 승인 모드 (추천)')}</div>
+                  <div style={{ fontSize: '12px', opacity: 0.8 }}>{t('Created drafts wait for your review in Drafts tab before posting', '새벽 2시에 생성된 5개 초안을 내가 보고 [승인/게시] 클릭 시 예약발송')}</div>
+                </div>
+                <div
+                  onClick={() => edit({ autoApprove: true })}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '10px',
+                    border: `2px solid ${form.autoApprove ? '#0070f3' : 'var(--border-color, #333)'}`,
+                    background: form.autoApprove ? 'rgba(0, 112, 243, 0.08)' : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>⚡ {t('Auto Approve Mode', '자동 승인 모드')}</div>
+                  <div style={{ fontSize: '12px', opacity: 0.8 }}>{t('Created drafts are automatically approved & scheduled for 5 target times', '새벽 2시에 생성됨과 동시에 5개 지정 시각으로 즉시 자동 승인 배치')}</div>
+                </div>
+              </div>
+            </div>
+
 
             <div className="row">
               <div className="field grow">
