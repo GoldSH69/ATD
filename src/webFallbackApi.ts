@@ -1,5 +1,13 @@
 import type { AppSettings, AutopilotStatus, Draft } from './types'
 
+interface LogEntry {
+  id: string
+  at: number
+  kind: 'post' | 'reply' | 'info' | 'error'
+  message: string
+  permalink?: string
+}
+
 const defaultSettings: AppSettings = {
   theme: 'dark',
   language: 'ko',
@@ -54,25 +62,6 @@ const defaultSettings: AppSettings = {
   },
 }
 
-const defaultStatus: AutopilotStatus = {
-  running: true,
-  goLive: true,
-  busy: false,
-  postsToday: 2,
-  maxPostsPerDay: 6,
-  repliesToday: 5,
-  maxRepliesPerDay: 20,
-  intervalMinutes: 120,
-  replyIntervalMinutes: 30,
-  lastRunAt: Date.now() - 3600000,
-  nextRunAt: Date.now() + 3600000,
-  lastReplyRunAt: Date.now() - 1800000,
-  nextReplyRunAt: Date.now() + 1800000,
-  llmReady: true,
-  threadsReady: true,
-  log: [],
-}
-
 export function initWebFallbackApi() {
   if (typeof (window as unknown as { api?: unknown }).api !== 'undefined') {
     return
@@ -81,7 +70,6 @@ export function initWebFallbackApi() {
   let currentSettings: AppSettings = defaultSettings
   let currentDrafts: Draft[] = []
 
-  // Try to load logs or config from data/ if available or localStorage
   try {
     const savedSettings = localStorage.getItem('autothreads_settings')
     if (savedSettings) currentSettings = JSON.parse(savedSettings)
@@ -89,6 +77,49 @@ export function initWebFallbackApi() {
     if (savedDrafts) currentDrafts = JSON.parse(savedDrafts)
   } catch {
     // Ignore
+  }
+
+  const getDynamicStatus = async (): Promise<AutopilotStatus> => {
+    let logs: LogEntry[] = []
+    try {
+      const res = await fetch('./data/logs.json?t=' + Date.now())
+      if (res.ok) {
+        logs = await res.json()
+      }
+    } catch {
+      logs = []
+    }
+
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000
+    const now = Date.now()
+    const postsToday = logs.filter(
+      (l) => l.kind === 'post' && now - l.at < ONE_DAY_MS && !l.message.includes('Dry-run')
+    ).length
+    const repliesToday = logs.filter(
+      (l) => l.kind === 'reply' && now - l.at < ONE_DAY_MS && !l.message.includes('Dry-run')
+    ).length
+
+    const lastPost = logs.find((l) => l.kind === 'post')
+    const lastReply = logs.find((l) => l.kind === 'reply')
+
+    return {
+      running: currentSettings.autopilot.enabled,
+      goLive: currentSettings.autopilot.goLive,
+      busy: false,
+      postsToday,
+      maxPostsPerDay: currentSettings.autopilot.maxPostsPerDay || 6,
+      repliesToday,
+      maxRepliesPerDay: currentSettings.autopilot.maxRepliesPerDay || 20,
+      intervalMinutes: currentSettings.autopilot.intervalMinutes || 120,
+      replyIntervalMinutes: currentSettings.autopilot.replyIntervalMinutes || 30,
+      lastRunAt: lastPost ? lastPost.at : null,
+      nextRunAt: now + (currentSettings.autopilot.intervalMinutes || 120) * 60000,
+      lastReplyRunAt: lastReply ? lastReply.at : null,
+      nextReplyRunAt: now + (currentSettings.autopilot.replyIntervalMinutes || 30) * 60000,
+      llmReady: true,
+      threadsReady: true,
+      log: logs,
+    }
   }
 
   ;(window as unknown as { api: unknown }).api = {
@@ -134,9 +165,13 @@ export function initWebFallbackApi() {
       return currentDrafts
     },
     draftPostNow: async () => ({ ok: true, message: 'Posted' }),
-    autopilotStatus: async () => defaultStatus,
-    autopilotSetRunning: async (running: boolean) => ({ ...defaultStatus, running }),
-    autopilotRunNow: async () => defaultStatus,
+    autopilotStatus: getDynamicStatus,
+    autopilotSetRunning: async (running: boolean) => {
+      currentSettings.autopilot.enabled = running
+      const st = await getDynamicStatus()
+      return { ...st, running }
+    },
+    autopilotRunNow: getDynamicStatus,
     openExternal: (url: string) => window.open(url, '_blank'),
     onDraftsChanged: () => {},
     onAutopilotStatus: () => {},
