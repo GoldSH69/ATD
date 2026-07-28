@@ -163,9 +163,10 @@ STRICT FORMATTING & CONTENT RULES:
 1. MUST fit within a single mobile Threads screen (under 400 characters).
 2. DO NOT just quote the title. Explain 2-3 concise, clear lines summarizing WHAT happened in the news so readers understand the core facts without clicking.
 3. Add 1-2 lines of human perspective or why this topic matters.
-4. End with 1 natural, friendly line inviting followers to comment and reply.
+4. The LAST LINE MUST be a CREATIVE, TOPIC-SPECIFIC question that directly references the specific subject, product, technology, or joke in the news (e.g. asking readers about their specific experience or opinion on that exact topic). NEVER repeat generic boilerplate questions like "여러분은 어떻게 생각하시나요?".
 5. NO robotic prefixes like "🤖 [AI 생성 포스트]". NO formal corporate jargon for casual/humor topics.
 6. Output ONLY the final post body text in Korean.`
+
 
 
   console.log('🤖 Generating post content with Gemini API...')

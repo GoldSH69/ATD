@@ -158,12 +158,36 @@ function buildNaturalHumanPost(newsTitle: string, topic?: string, snippet?: stri
 
   if (lowerTopic.includes('humor') || lowerTopic.includes('유머') || lowerTopic.includes('드립') || lowerTopic.includes('meme')) {
     const summary = cleanSnippet || '오늘 커뮤니티와 SNS에서 유난히 높은 조회수와 폭발적인 댓글 반응을 얻고 있는 재미있는 유머 소식입니다.'
-    return `📢 ${title}\n\n${summary}\n\n바쁜 하루 끝에 소소하게 터지며 웃어보기 딱 좋네요 ㅋㅋㅋ 유쾌한 기분 전해졌으면 좋겠습니다!\n\n다들 오늘 하루 수고 많으셨고, 재미있는 짤이나 드립 있으면 댓글로 공유해주세요 💬`
+    const endings = [
+      '다들 보고 피식하셨나요? ㅋㅋㅋ 가장 재미있었던 포인트나 드립이 있다면 댓글로 알려주세요! 🤣',
+      '퇴근길 웃음 보너스네요 ㅋㅋㅋ 다들 오늘 피드에서 본 제일 터지는 소식 있으신가요? 😃',
+      '요즘 이거 진짜 많이 보이던데 ㅋㅋㅋ 다들 얼마나 공감되시나요? 댓글로 이야기해봐요 💬',
+    ]
+    const ending = endings[Math.floor(Math.random() * endings.length)]
+    return `📢 ${title}\n\n${summary}\n\n바쁜 하루 끝에 소소하게 웃어보기 딱 좋네요 ㅋㅋㅋ 유쾌한 기분 전해졌으면 좋겠습니다!\n\n${ending}`
   }
 
-  const summary = cleanSnippet || '최신 기술 동향과 시장 흐름이 빠르게 변화함에 따라 관련 서비스와 주요 지표들이 큰 주목을 받고 있는 뉴스입니다.'
-  return `📢 ${title}\n\n${summary}\n\n기존 방식과 달리 사용자 편의성을 높여주는 시도들이 이어져 앞으로의 변화가 더 기대됩니다 🚀\n\n여러분은 이번 소식에 대해 어떻게 생각하시나요? 자유롭게 의견을 나눠주세요 💬`
+  if (lowerTopic.includes('startup') || lowerTopic.includes('스타트업') || lowerTopic.includes('business')) {
+    const summary = cleanSnippet || '글로벌 스타트업 생태계와 신규 비즈니스 시장에서 주목받는 핵심 전략과 투자 소식입니다.'
+    const endings = [
+      '글로벌 진출이 본격화되면 성장세가 엄청날 것 같은데, 이 비즈니스의 미래 가치 어떻게 보시나요? 📈',
+      '기존 업계 판도를 바꿀 유망한 시도라고 보는데, 과연 시장에 어떤 파급력을 줄지 기대되네요!',
+      '비즈니스 모델이 꽤 신선해 보이는데, 여러분이라면 이번 서비스 도입해보실 것 같나요? 💡',
+    ]
+    const ending = endings[Math.floor(Math.random() * endings.length)]
+    return `📢 ${title}\n\n${summary}\n\n새로운 시장 기회를 포착한 시도라 앞으로의 성장 궤적이 사뭇 주목됩니다 🚀\n\n${ending}`
+  }
+
+  const summary = cleanSnippet || '최신 기술 동향과 시장 흐름이 빠르게 변화함에 따라 관련 서비스와 주요 지표들이 큰 주목을 받고 있는 이슈입니다.'
+  const endings = [
+    '이 기술이나 서비스가 실제 일상에 도입된다면 여러분은 써보실 건가요? 🤖',
+    '기존 방식과 비교했을 때 어느 쪽이 더 혁신적이라고 느껴지시나요? 솔직한 의견이 궁금합니다! 🚀',
+    '기술 발전 속도가 정말 무서운데, 앞으로 가장 기대되거나 우려되는 부분은 무엇인가요? 💬',
+  ]
+  const ending = endings[Math.floor(Math.random() * endings.length)]
+  return `📢 ${title}\n\n${summary}\n\n사용자 편의성과 효율성을 획기적으로 올려줄 만한 변화라 앞으로의 확장성이 기대되네요!\n\n${ending}`
 }
+
 
 
 export function initWebFallbackApi() {
