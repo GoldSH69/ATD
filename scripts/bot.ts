@@ -2,7 +2,6 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { fetchGoogleNews } from './services/news'
 import { generateContentWithGemini } from './services/gemini'
-import { publishPost, type ThreadsConfig } from './services/threads'
 
 interface Config {
   enabled: boolean
@@ -46,11 +45,16 @@ interface DraftItem {
   updatedAt: number
 }
 
-async function main() {
-  const args = process.argv.slice(2)
-  const isDryRun = args.includes('--dry-run')
+function computeJitterTime(targetHour: number, targetMin: number): number {
+  const d = new Date()
+  d.setHours(targetHour, targetMin, 0, 0)
+  // Random jitter of ±10 minutes
+  const jitterMs = (Math.floor(Math.random() * 21) - 10) * 60 * 1000
+  return d.getTime() + jitterMs
+}
 
-  console.log('🤖 AutoThreads Bot Engine Starting...')
+async function main() {
+  console.log('🤖 AutoThreads 02:00 AM Daily Batch Engine Starting...')
 
   const rootDir = path.resolve(__dirname, '..')
   const dataDir = path.join(rootDir, 'data')
@@ -72,8 +76,6 @@ async function main() {
     : []
 
   const geminiApiKey = process.env.GEMINI_API_KEY || ''
-  const threadsAccessToken = process.env.THREADS_ACCESS_TOKEN || ''
-  const threadsUserId = process.env.THREADS_USER_ID || ''
 
   const addLog = (kind: LogEntry['kind'], message: string, permalink?: string) => {
     const entry: LogEntry = {
@@ -88,7 +90,6 @@ async function main() {
     console.log(`[LOG:${kind.toUpperCase()}] ${message}`)
   }
 
-  // 1단계: 메인 전원 검사 (config.enabled)
   if (!config.enabled) {
     console.log('🛑 AutoThreads bot is disabled in config.json (enabled = false). Exiting.')
     process.exit(0)
@@ -99,11 +100,16 @@ async function main() {
   const todayDrafts = drafts.filter((d) => now - d.createdAt < ONE_DAY_MS && d.kind === 'post')
 
   const topicsList = config.topics.length > 0 ? config.topics : ['AI', '기술', '스타트업', '관계심리학', '생산성']
-  const postingTimes = config.postingTimes || ['06:00', '11:30', '15:00', '18:00', '21:00']
+  const targetSlots = [
+    { hour: 6, min: 0 },
+    { hour: 11, min: 30 },
+    { hour: 15, min: 0 },
+    { hour: 18, min: 0 },
+    { hour: 21, min: 0 },
+  ]
 
-  // CASE A: 오늘치 포스트가 아직 생성되지 않은 경우 (새벽 02:00 일괄 창작 실행)
   if (todayDrafts.length < 5) {
-    console.log(`🌅 Starting Batch Generation for today's 5 posts...`)
+    console.log(`🌅 Starting 02:00 AM Batch Generation for today's 5 posts...`)
 
     const generatedBatch: DraftItem[] = []
     const countToGenerate = 5 - todayDrafts.length
@@ -156,6 +162,8 @@ STRICT RULES:
 
       const isAuto = config.autoApprove === true
       const draftStatus = isAuto ? 'scheduled' : 'draft'
+      const slot = targetSlots[i % targetSlots.length]
+      const scheduledAt = isAuto ? computeJitterTime(slot.hour, slot.min) : undefined
 
       const item: DraftItem = {
         id: `draft-${now}-${i}-${Math.random().toString(36).slice(2, 6)}`,
@@ -165,6 +173,7 @@ STRICT RULES:
         sourceTitle: selectedNews?.title,
         sourceUrl: selectedNews?.link,
         status: draftStatus,
+        scheduledAt,
         createdAt: now,
         updatedAt: now,
       }
@@ -177,70 +186,17 @@ STRICT RULES:
     fs.writeFileSync(usedArticlesPath, JSON.stringify(usedArticles, null, 2))
     fs.writeFileSync(draftsPath, JSON.stringify(drafts, null, 2))
 
-    // 만약 자동 승인(autoApprove: true) 이면 첫 번째 포스트(Post #1) 즉시 실시간 발행!
-    if (config.autoApprove && generatedBatch.length > 0 && threadsAccessToken && !isDryRun) {
-      const firstPost = generatedBatch[0]
-      console.log(`🚀 [자동 승인 모드] 첫 번째 글(Post #1) 즉시 실시간 스레드 발행 시작...`)
-      try {
-        const threadsConfig: ThreadsConfig = { accessToken: threadsAccessToken, userId: threadsUserId }
-        const res = await publishPost(threadsConfig, firstPost.text)
-        firstPost.status = 'posted'
-        firstPost.updatedAt = Date.now()
-        fs.writeFileSync(draftsPath, JSON.stringify(drafts, null, 2))
-        addLog('post', `🚀 [자동 승인] 새벽 일괄 생성 완료 후 첫 번째 글 즉시 발행: "${firstPost.text.slice(0, 45)}..."`, res.permalink)
-      } catch (err) {
-        addLog('error', `Failed to publish first post: ${err instanceof Error ? err.message : String(err)}`)
-      }
-    } else {
-      const modeText = config.autoApprove ? '자동 승인 예약 완료' : '수동 승인(Manual) 검토 대기 중 (자동 게시 금지)'
-      addLog('info', `🌅 하루치 포스트 ${generatedBatch.length}개 일괄 생성 완료 (${modeText})`)
-    }
+    const modeText = config.autoApprove
+      ? '자동 승인 무작위 노이즈 시각 예약 등록 완료 (20분 주기 봇이 실시간 발행)'
+      : '수동 승인(Manual) 검토 대기 중 (초안 탭에서 검토/예약 대기)'
+    addLog('info', `🌅 하루치 포스트 ${generatedBatch.length}개 일괄 창작 완료 (${modeText})`)
 
     fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
     console.log('✅ Batch generation complete.')
     return
   }
 
-  // CASE B: 이미 오늘 포스트 5개가 생성되어 있는 경우 (지정 4개 시간대 실행 봇 타임)
-  console.log('⏰ Scheduled slot execution time check...')
-
-  if (!config.autoApprove) {
-    console.log('📝 Manual approval mode is active (autoApprove: false). Skipping automatic publication.')
-    addLog('info', '📝 [수동 승인 모드] 자동 게시가 금지되어 있습니다. (초안 탭에서 승인 대기 중)')
-    fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
-    return
-  }
-
-  // 자동 승인 모드인 경우, 예약 대기 중인 다음 포스트 찾아 발행!
-  const pendingScheduled = drafts.find((d) => d.status === 'scheduled' && d.kind === 'post')
-
-  if (!pendingScheduled) {
-    console.log('ℹ️ No pending scheduled posts found for this slot. Skipping.')
-    fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
-    return
-  }
-
-  if (isDryRun || !threadsAccessToken) {
-    console.log(`[Dry-run] Would publish scheduled post: "${pendingScheduled.text.slice(0, 50)}..."`)
-    addLog('info', `[Dry-run] Scheduled post preview: ${pendingScheduled.text.slice(0, 50)}...`)
-  } else {
-    console.log(`🚀 Publishing scheduled post: "${pendingScheduled.text.slice(0, 50)}..."`)
-    try {
-      const threadsConfig: ThreadsConfig = { accessToken: threadsAccessToken, userId: threadsUserId }
-      const res = await publishPost(threadsConfig, pendingScheduled.text)
-      pendingScheduled.status = 'posted'
-      pendingScheduled.updatedAt = Date.now()
-      fs.writeFileSync(draftsPath, JSON.stringify(drafts, null, 2))
-      addLog('post', `🚀 [자동 승인] 지정 시각 포스트 발행 성공: "${pendingScheduled.text.slice(0, 45)}..."`, res.permalink)
-    } catch (err) {
-      pendingScheduled.status = 'failed'
-      fs.writeFileSync(draftsPath, JSON.stringify(drafts, null, 2))
-      addLog('error', `Failed to publish scheduled post: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
-
-  fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
-  console.log('✅ Scheduled slot execution complete.')
+  console.log('ℹ️ Today\'s batch posts are already generated.')
 }
 
 main().catch((err) => {

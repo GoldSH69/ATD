@@ -1,12 +1,12 @@
-name: 24/7 AutoThreads Daily Batch Engine
+name: 20-Min Periodic Scheduler & Auto-Reply Bot
 
 on:
   schedule:
-    - cron: '0 17 * * *'   # 매일 새벽 02:00 KST 1회 일괄 포스트 창작 가동 (17:00 UTC)
+    - cron: '*/20 * * * *'  # 20분 마다 가동되어 예약 포스트 발행 및 자동 답글 수행
   workflow_dispatch:
 
 jobs:
-  run-batch:
+  run-scheduler:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -26,17 +26,17 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
-      - name: Run AutoThreads Batch Engine
+      - name: Run Periodic Scheduler & Auto-Reply Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
         run: |
-          npx tsx scripts/bot.ts
+          npx tsx scripts/scheduler.ts
 
       - name: Commit and Push Logs / Config Updates
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/logs.json data/drafts.json data/config.json data/used_articles.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "auto: update daily batch drafts [skip ci]" && git push)
+          git add data/logs.json data/drafts.json data/config.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "auto: update scheduler logs and drafts [skip ci]" && git push)

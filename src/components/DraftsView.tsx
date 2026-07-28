@@ -255,26 +255,27 @@ function DraftEditor({ draft }: { draft: Draft }) {
         <button className="btn" disabled={!dirty || busy !== null} onClick={() => void save()}>
           {busy === 'save' ? textUi.saving : textUi.save}
         </button>
-        <input
-          type="datetime-local"
-          className="input"
-          style={{ width: 'auto' }}
-          value={scheduleAt}
-          onChange={(e) => setScheduleAt(e.target.value)}
-        />
         <button
           className="btn"
           disabled={!text.trim() || over || busy !== null}
-          onClick={() => void schedule()}
+          onClick={() => {
+            const ts = scheduleAt ? new Date(scheduleAt).getTime() : Date.now() + 10 * 60 * 1000
+            setBusy('schedule')
+            void upsertDraft(withDraftEdits({ status: 'scheduled', scheduledAt: ts })).then(() => {
+              setBusy(null)
+              toast('ok', `📅 20분 주기 봇 예약 완료 (${fmtDateTime(ts)})`)
+              selectDraft(null)
+            })
+          }}
         >
-          {busy === 'schedule' ? textUi.scheduling : textUi.schedule}
+          📅 20분 봇 예약 등록
         </button>
         <button
           className="btn primary"
           disabled={!text.trim() || over || busy !== null}
           onClick={() => void postNow()}
         >
-          {busy === 'post' ? textUi.posting : textUi.postNow}
+          🚀 지금 즉시 게시
         </button>
         <button
           className={`btn ${confirmDel ? 'danger' : 'ghost'}`}
@@ -283,6 +284,7 @@ function DraftEditor({ draft }: { draft: Draft }) {
         >
           {confirmDel ? textUi.confirmDelete : textUi.delete}
         </button>
+
       </div>
     </div>
   )
