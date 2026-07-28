@@ -231,13 +231,31 @@ export function initWebFallbackApi() {
     const selected = news[Math.floor(Math.random() * news.length)]
     const title = selected ? selected.title : '최신 IT 및 기술 트렌드'
 
-    const samplePost = `🤖 [자동 포스트] "${title.slice(0, 40)}..."\n\n이 주제에 대해 어떻게 생각하시나요? 댓글로 자유롭게 의견을 나눠주세요!`
+    const samplePost = `🤖 [AI 생성 포스트] "${title.slice(0, 40)}..."\n\n이 주제에 대해 어떻게 생각하시나요? 댓글로 자유롭게 의견을 나눠주세요!`
+
+    const newDraft: Draft = {
+      id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      kind: 'post',
+      text: samplePost,
+      topic: topic,
+      sourceTitle: title,
+      sourceUrl: selected?.link || 'https://news.google.com',
+      status: 'draft',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    currentDrafts.unshift(newDraft)
+    try {
+      localStorage.setItem('autothreads_drafts', JSON.stringify(currentDrafts))
+    } catch {
+      // Ignore
+    }
 
     const newLog: LogEntry = {
       id: `${Date.now()}-runpass`,
       at: Date.now(),
       kind: 'post',
-      message: `🚀 [완전 자동 가동] 뉴스 기반 포스트 생성 완료: "${samplePost.slice(0, 50)}..."`,
+      message: `🚀 [완전 자동] 초안 생성 완료: "${samplePost.slice(0, 45)}..." (초안 탭에서 확인/게시 가능)`,
     }
 
     const st = await getDynamicStatus()
@@ -257,10 +275,29 @@ export function initWebFallbackApi() {
     threadsTest: async () => ({ ok: true, message: 'Threads API가 GitHub Secrets에 연결되어 있습니다.' }),
     threadsScrapeStyle: async () => [],
     newsFetch: async (input: { query?: string }) => fetchGoogleNewsWeb(input?.query || 'AI'),
-    generatePost: async (input: { newsTitle?: string }) => ({
-      ok: true,
-      text: `🤖 [AI 생성 초안]\n\n${input?.newsTitle || '최신 IT 소식'}\n\n여러분은 이 소식에 대해 어떻게 생각하시나요? 댓글로 의견을 나눠주세요!`,
-    }),
+    generatePost: async (input: { topic?: string; newsTitle?: string; newsSource?: string; newsUrl?: string }) => {
+      const text = `🤖 [AI 생성 포스트]\n\n${input?.newsTitle || '최신 IT 소식'}\n\n여러분은 이 주제에 대해 어떻게 생각하시나요? 댓글로 의견을 나눠주세요!`
+      const now = Date.now()
+      const draft: Draft = {
+        id: `draft-${now}-${Math.random().toString(36).slice(2, 6)}`,
+        kind: 'post',
+        text,
+        topic: input?.topic || 'AI',
+        sourceTitle: input?.newsTitle,
+        sourceUrl: input?.newsUrl,
+        status: 'draft',
+        createdAt: now,
+        updatedAt: now,
+      }
+      currentDrafts.unshift(draft)
+      try {
+        localStorage.setItem('autothreads_drafts', JSON.stringify(currentDrafts))
+      } catch {
+        // Ignore
+      }
+      return { ok: true, text }
+    },
+
     generateReply: async (input: { replyText?: string }) => ({
       ok: true,
       text: `답변 감사드립니다! ${input?.replyText ? `"${input.replyText.slice(0, 20)}..."에 대한` : ''} 의견 잘 읽었습니다.`,
