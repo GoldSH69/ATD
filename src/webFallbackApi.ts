@@ -74,6 +74,7 @@ function decodeEntities(s: string): string {
 function cleanTitle(s: string): string {
   return decodeEntities(s)
     .replace(/\s*-\s*[^-]+$/, '')
+    .replace(/^🤖\s*\[[^\]]+\]\s*/, '')
     .trim()
 }
 
@@ -136,16 +137,29 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
     // Ignore and fallback
   }
 
+  const lowerTopic = q.toLowerCase()
+  if (lowerTopic.includes('humor') || lowerTopic.includes('유머') || lowerTopic.includes('드립') || lowerTopic.includes('meme')) {
+    return [
+      { title: `오늘 커뮤니티 반응 폭발한 소소하고 웃긴 유머 모음 🤣`, link: 'https://news.google.com', source: '인터넷유머', publishedAt: Date.now(), topic: q },
+      { title: `퇴근길 피로 날려버리는 소소한 인스타/스레드 인기 드립 릴레이`, link: 'https://news.google.com', source: '트렌드이슈', publishedAt: Date.now() - 3600000, topic: q },
+    ]
+  }
+
   return [
-    { title: `'${q}' 분야 글로벌 핵심 트렌드 및 산업 변화 동향`, link: 'https://news.google.com', source: '테크뉴스', publishedAt: Date.now(), topic: q },
-    { title: `시장을 선도하는 '${q}' 관련 주요 주자들의 새로운 전략 발표`, link: 'https://news.google.com', source: '글로벌이슈', publishedAt: Date.now() - 3600000, topic: q },
-    { title: `'${q}' 서비스 사용자 반응 및 향후 성장 가능성 분석`, link: 'https://news.google.com', source: 'IT 인사이트', publishedAt: Date.now() - 7200000, topic: q },
+    { title: `IT 및 기술 분야 최근 주요 이슈 한눈에 보기 🚀`, link: 'https://news.google.com', source: '테크뉴스', publishedAt: Date.now(), topic: q },
+    { title: `글로벌 스타트업 생태계와 주목받는 신규 비즈니스 동향`, link: 'https://news.google.com', source: '글로벌이슈', publishedAt: Date.now() - 3600000, topic: q },
   ]
 }
 
-function buildNaturalHumanPost(newsTitle: string): string {
+function buildNaturalHumanPost(newsTitle: string, topic?: string): string {
   const title = cleanTitle(newsTitle)
-  return `요즘 관심 갖고 보고 있는 소식이네요! 👀\n\n"${title}"\n\n최근 시장 흐름이 정말 빠르게 바뀌고 있는 것 같습니다. 트렌드 변화를 유심히 지켜볼 필요가 있어 보이는데, 앞으로의 영향력이 사뭇 기대됩니다.\n\n여러분은 이 소식에 대해 어떻게 생각하시나요? 자유롭게 의견 남겨주세요!`
+  const lowerTopic = (topic || '').toLowerCase()
+
+  if (lowerTopic.includes('humor') || lowerTopic.includes('유머') || lowerTopic.includes('드립') || lowerTopic.includes('meme')) {
+    return `오늘 피드에서 유난히 핫한 유머 소식이네요! 🤣\n\n"${title}"\n\n바쁜 하루 끝에 소소하게 웃으면서 읽어보기 딱 좋네요 ㅋㅋㅋ\n\n다들 오늘 하루도 정말 수고 많으셨습니다! 재미있는 드립이나 짤 있으면 댓글로 알려주세요 😃`
+  }
+
+  return `요즘 빠르게 변화하는 IT/기술 분야 핫이슈네요! 🚀\n\n"${title}"\n\n앞으로 우리 시장과 일상에 어떤 변화를 가져올지 유심히 지켜볼 필요가 있어 보입니다.\n\n여러분은 이번 소식에 대해 어떻게 생각하시나요? 자유롭게 의견 나눠주세요!`
 }
 
 export function initWebFallbackApi() {
@@ -213,7 +227,6 @@ export function initWebFallbackApi() {
       localLogs = []
     }
 
-    // Merge server logs and local browser logs, deduplicating by ID/message
     const seen = new Set<string>()
     const mergedLogs: LogEntry[] = []
 
@@ -225,7 +238,6 @@ export function initWebFallbackApi() {
       }
     }
 
-    // Sort descending by timestamp
     mergedLogs.sort((a, b) => b.at - a.at)
     const logs = mergedLogs.slice(0, 150)
 
@@ -273,7 +285,7 @@ export function initWebFallbackApi() {
     const selected = news[Math.floor(Math.random() * news.length)]
     const title = selected ? selected.title : '최신 IT 및 기술 트렌드 소식'
 
-    const postText = buildNaturalHumanPost(title)
+    const postText = buildNaturalHumanPost(title, topic)
 
     const newDraft: Draft = {
       id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -300,7 +312,6 @@ export function initWebFallbackApi() {
       message: `🚀 초안 생성 완료: "${postText.slice(0, 45)}..." (초안 탭에서 확인/게시 가능)`,
     }
 
-    // Save to local logs immediately
     let localLogs: LogEntry[] = []
     try {
       const rawLocal = localStorage.getItem('autothreads_web_logs')
@@ -332,7 +343,7 @@ export function initWebFallbackApi() {
     newsFetch: async (input: { query?: string }) => fetchGoogleNewsWeb(input?.query || 'AI'),
     generatePost: async (input: { topic?: string; newsTitle?: string; newsSource?: string; newsUrl?: string }) => {
       const title = input?.newsTitle || '최신 산업 및 기술 소식'
-      const text = buildNaturalHumanPost(title)
+      const text = buildNaturalHumanPost(title, input?.topic)
       const now = Date.now()
       const draft: Draft = {
         id: `draft-${now}-${Math.random().toString(36).slice(2, 6)}`,
@@ -404,7 +415,6 @@ export function initWebFallbackApi() {
       return { ...st, log: [] }
     },
     openExternal: (url: string) => window.open(url, '_blank'),
-
     onDraftsChanged: () => {},
     onAutopilotStatus: () => {},
   }
