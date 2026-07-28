@@ -1,4 +1,4 @@
-import type { AppSettings, AutopilotStatus, Draft } from './types'
+import type { AppSettings, AutopilotStatus, Draft, NewsItem } from './types'
 
 interface LogEntry {
   id: string
@@ -62,6 +62,53 @@ const defaultSettings: AppSettings = {
   },
 }
 
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
+function tagText(block: string, tag: string): string {
+  const m = block.match(
+    new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`)
+  )
+  return m ? decodeEntities(m[1].trim()) : ''
+}
+
+async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
+  try {
+    const q = topic.trim() || 'AI'
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=ko&gl=KR&ceid=KR:ko`
+    const res = await fetch(url)
+    if (!res.ok) return []
+    const xml = await res.text()
+    const items: NewsItem[] = []
+    const itemRe = /<item>([\s\S]*?)<\/item>/g
+    let m: RegExpExecArray | null
+    while ((m = itemRe.exec(xml)) !== null && items.length < 20) {
+      const block = m[1]
+      const title = tagText(block, 'title')
+      if (!title) continue
+      const source = tagText(block, 'source') || 'Google News'
+      const pubDate = tagText(block, 'pubDate')
+      const parsed = pubDate ? Date.parse(pubDate) : NaN
+      items.push({
+        title,
+        link: tagText(block, 'link'),
+        source,
+        publishedAt: Number.isFinite(parsed) ? parsed : null,
+        topic: q,
+      })
+    }
+    return items
+  } catch {
+    return []
+  }
+}
+
 export function initWebFallbackApi() {
   if (typeof (window as unknown as { api?: unknown }).api !== 'undefined') {
     return
@@ -69,6 +116,25 @@ export function initWebFallbackApi() {
 
   let currentSettings: AppSettings = defaultSettings
   let currentDrafts: Draft[] = []
+
+  // Pre-load data/config.json if available
+  fetch('./data/config.json')
+    .then((r) => r.json())
+    .then((cfg) => {
+      if (cfg && typeof cfg === 'object') {
+        const savedSettings = localStorage.getItem('autothreads_settings')
+        if (!savedSettings) {
+          if (Array.isArray(cfg.topics)) {
+            currentSettings.topics = cfg.topics
+            currentSettings.autopilot.categories = cfg.topics
+          }
+          if (typeof cfg.enabled === 'boolean') {
+            currentSettings.autopilot.enabled = cfg.enabled
+          }
+        }
+      }
+    })
+    .catch(() => {})
 
   try {
     const savedSettings = localStorage.getItem('autothreads_settings')
@@ -143,10 +209,16 @@ export function initWebFallbackApi() {
     threadsOAuthStart: async () => ({ ok: false, message: 'OAuth requires desktop app' }),
     threadsTest: async () => ({ ok: true, message: 'Threads API가 GitHub Secrets에 연결되어 있습니다.' }),
     threadsScrapeStyle: async () => [],
-    newsFetch: async () => [],
-    generatePost: async () => ({ ok: true, text: '샘플 포스트 초안입니다.' }),
-    generateReply: async () => ({ ok: true, text: '샘플 답글입니다.' }),
-    imageKeywords: async () => [],
+    newsFetch: async (input: { query?: string }) => fetchGoogleNewsWeb(input?.query || 'AI'),
+    generatePost: async (input: { title?: string }) => ({
+      ok: true,
+      text: `🤖 [AI 생성 초안]\n\n${input?.title || '최신 IT 소식'}\n\n여러분은 이 소식에 대해 어떻게 생각하시나요? 댓글로 의견을 나눠주세요!`,
+    }),
+    generateReply: async (input: { replyText?: string }) => ({
+      ok: true,
+      text: `답변 감사드립니다! ${input?.replyText ? `"${input.replyText.slice(0, 20)}..."에 대한` : ''} 의견 잘 읽었습니다.`,
+    }),
+    imageKeywords: async () => ['technology', 'ai', 'future'],
     imageSearch: async () => [],
     unansweredReplies: async () => ({ ok: true, replies: [] }),
     draftsAll: async () => currentDrafts,
@@ -170,7 +242,7 @@ export function initWebFallbackApi() {
       }
       return currentDrafts
     },
-    draftPostNow: async () => ({ ok: true, message: 'Posted' }),
+    draftPostNow: async () => ({ ok: true, message: '24시간 무인 스케줄러(GitHub Actions)가 순차 포스팅합니다.' }),
     autopilotStatus: getDynamicStatus,
     autopilotSetRunning: async (running: boolean) => {
       currentSettings.autopilot.enabled = running
