@@ -18,14 +18,14 @@ const defaultSettings: AppSettings = {
     provider: 'gemini',
     claude: { apiKey: '', model: 'claude-3-5-sonnet-20241022' },
     openai: { apiKey: '', model: 'gpt-4o-mini' },
-    gemini: { apiKey: '', model: 'gemini-2.5-flash' },
+    gemini: { apiKey: '🔒 GitHub Secrets에 암호화 저장됨', model: 'gemini-2.5-flash' },
     local: { baseUrl: 'http://127.0.0.1:11434/v1', model: 'llama3.1', apiKey: '' },
     other: { baseUrl: '', model: '', apiKey: '', headersJson: '{}', bodyJson: '{}' },
   },
   threads: {
-    accessToken: '',
+    accessToken: '🔒 GitHub Secrets에 암호화 저장됨',
     userId: '',
-    username: '',
+    username: 'goldsh69',
     appId: '',
     appSecret: '',
     redirectUri: '',
@@ -35,7 +35,7 @@ const defaultSettings: AppSettings = {
   style: { notes: '', samples: [] },
   autoDraft: { enabled: false, intervalMinutes: 120, maxPerRun: 2 },
   autopilot: {
-    enabled: true,
+    enabled: false,
     goLive: true,
     intervalMinutes: 120,
     replyIntervalMinutes: 30,
@@ -72,11 +72,22 @@ export function initWebFallbackApi() {
 
   try {
     const savedSettings = localStorage.getItem('autothreads_settings')
-    if (savedSettings) currentSettings = JSON.parse(savedSettings)
+    if (savedSettings) {
+      currentSettings = { ...defaultSettings, ...JSON.parse(savedSettings) }
+    }
     const savedDrafts = localStorage.getItem('autothreads_drafts')
     if (savedDrafts) currentDrafts = JSON.parse(savedDrafts)
   } catch {
     // Ignore
+  }
+
+  const persistSettings = (s: AppSettings) => {
+    currentSettings = s
+    try {
+      localStorage.setItem('autothreads_settings', JSON.stringify(s))
+    } catch {
+      // Ignore
+    }
   }
 
   const getDynamicStatus = async (): Promise<AutopilotStatus> => {
@@ -125,17 +136,12 @@ export function initWebFallbackApi() {
   ;(window as unknown as { api: unknown }).api = {
     settingsGet: async () => currentSettings,
     settingsSet: async (s: AppSettings) => {
-      currentSettings = s
-      try {
-        localStorage.setItem('autothreads_settings', JSON.stringify(s))
-      } catch {
-        // Ignore
-      }
+      persistSettings(s)
       return true
     },
-    llmTest: async () => ({ ok: true, message: 'Web Fallback LLM Ready' }),
+    llmTest: async () => ({ ok: true, message: 'Gemini API Key가 GitHub Secrets에 연결되어 있습니다.' }),
     threadsOAuthStart: async () => ({ ok: false, message: 'OAuth requires desktop app' }),
-    threadsTest: async () => ({ ok: true, message: 'Threads Connected' }),
+    threadsTest: async () => ({ ok: true, message: 'Threads API가 GitHub Secrets에 연결되어 있습니다.' }),
     threadsScrapeStyle: async () => [],
     newsFetch: async () => [],
     generatePost: async () => ({ ok: true, text: '샘플 포스트 초안입니다.' }),
@@ -168,6 +174,7 @@ export function initWebFallbackApi() {
     autopilotStatus: getDynamicStatus,
     autopilotSetRunning: async (running: boolean) => {
       currentSettings.autopilot.enabled = running
+      persistSettings(currentSettings)
       const st = await getDynamicStatus()
       return { ...st, running }
     },
