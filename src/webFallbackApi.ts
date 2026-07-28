@@ -8,6 +8,18 @@ interface LogEntry {
   permalink?: string
 }
 
+interface ServerConfig {
+  enabled?: boolean
+  autoApprove?: boolean
+  scheduleMode?: 'interval' | 'times'
+  postingTimes?: string[]
+  maxPostsPerDay?: number
+  topics?: string[]
+  originalRatio?: number
+  toneNotes?: string
+  agentName?: string
+}
+
 const defaultSettings: AppSettings = {
   theme: 'dark',
   language: 'ko',
@@ -241,44 +253,38 @@ export function initWebFallbackApi() {
   let currentSettings: AppSettings = defaultSettings
   let currentDrafts: Draft[] = []
 
+  // Direct Server Config Fetch - NO LOCALSTORAGE OVERRIDES
+  const loadServerConfig = () => {
+    fetch('./data/config.json?t=' + Date.now())
+      .then((r) => r.json())
+      .then((cfg: ServerConfig) => {
+        if (cfg && typeof cfg === 'object') {
+          currentSettings.autopilot.enabled = Boolean(cfg.enabled)
+          currentSettings.autopilot.autoApprove = Boolean(cfg.autoApprove)
+          currentSettings.autopilot.maxPostsPerDay = cfg.maxPostsPerDay || 5
+          if (Array.isArray(cfg.topics)) {
+            currentSettings.topics = cfg.topics
+            currentSettings.autopilot.categories = cfg.topics
+          }
+          if (typeof cfg.originalRatio === 'number') {
+            currentSettings.autopilot.originalRatio = cfg.originalRatio
+          }
+        }
+      })
+      .catch(() => {})
+  }
+
+  loadServerConfig()
+
   try {
-    const savedSettings = localStorage.getItem('autothreads_settings')
-    if (savedSettings) {
-      currentSettings = { ...defaultSettings, ...JSON.parse(savedSettings) }
-    } else {
-      currentSettings.autopilot.enabled = false
-    }
     const savedDrafts = localStorage.getItem('autothreads_drafts')
     if (savedDrafts) currentDrafts = JSON.parse(savedDrafts)
   } catch {
     // Ignore
   }
 
-  fetch('./data/config.json')
-    .then((r) => r.json())
-    .then((cfg) => {
-      if (cfg && typeof cfg === 'object') {
-        const savedSettings = localStorage.getItem('autothreads_settings')
-        if (!savedSettings) {
-          if (Array.isArray(cfg.topics)) {
-            currentSettings.topics = cfg.topics
-            currentSettings.autopilot.categories = cfg.topics
-          }
-          if (typeof cfg.enabled === 'boolean') {
-            currentSettings.autopilot.enabled = cfg.enabled
-          }
-        }
-      }
-    })
-    .catch(() => {})
-
   const persistSettings = (s: AppSettings) => {
     currentSettings = s
-    try {
-      localStorage.setItem('autothreads_settings', JSON.stringify(s))
-    } catch {
-      // Ignore
-    }
   }
 
   const getDynamicStatus = async (): Promise<AutopilotStatus> => {
@@ -290,6 +296,22 @@ export function initWebFallbackApi() {
       }
     } catch {
       serverLogs = []
+    }
+
+    // Always fetch authoritative server config
+    try {
+      const cfgRes = await fetch('./data/config.json?t=' + Date.now())
+      if (cfgRes.ok) {
+        const cfg: ServerConfig = await cfgRes.json()
+        currentSettings.autopilot.enabled = Boolean(cfg.enabled)
+        currentSettings.autopilot.autoApprove = Boolean(cfg.autoApprove)
+        currentSettings.autopilot.maxPostsPerDay = cfg.maxPostsPerDay || 5
+        if (Array.isArray(cfg.topics)) {
+          currentSettings.topics = cfg.topics
+        }
+      }
+    } catch {
+      // Ignore
     }
 
     let localLogs: LogEntry[] = []
@@ -313,12 +335,6 @@ export function initWebFallbackApi() {
 
     mergedLogs.sort((a, b) => b.at - a.at)
     const logs = mergedLogs.slice(0, 150)
-
-    try {
-      localStorage.setItem('autothreads_web_logs', JSON.stringify(logs))
-    } catch {
-      // Ignore
-    }
 
     const ONE_DAY_MS = 24 * 60 * 60 * 1000
     const now = Date.now()
@@ -348,7 +364,7 @@ export function initWebFallbackApi() {
       intervalMinutes: currentSettings.autopilot.intervalMinutes || 120,
       replyIntervalMinutes: currentSettings.autopilot.replyIntervalMinutes || 30,
       lastRunAt: lastPost ? lastPost.at : null,
-      nextRunAt: null, // Fixed static schedule (No ticking timer)
+      nextRunAt: null,
       lastReplyRunAt: lastReply ? lastReply.at : null,
       nextReplyRunAt: null,
       llmReady: true,
@@ -419,12 +435,14 @@ export function initWebFallbackApi() {
     }
 
     const st = await getDynamicStatus()
-    // CRITICAL BUGFIX: Do NOT mutate running state to true when generating a draft! Keep user's enabled setting!
     return { ...st, busy: false, running: currentSettings.autopilot.enabled }
   }
 
   ;(window as unknown as { api: unknown }).api = {
-    settingsGet: async () => currentSettings,
+    settingsGet: async () => {
+      await getDynamicStatus()
+      return currentSettings
+    },
     settingsSet: async (s: AppSettings) => {
       persistSettings(s)
       return true
