@@ -348,9 +348,9 @@ export function initWebFallbackApi() {
       intervalMinutes: currentSettings.autopilot.intervalMinutes || 120,
       replyIntervalMinutes: currentSettings.autopilot.replyIntervalMinutes || 30,
       lastRunAt: lastPost ? lastPost.at : null,
-      nextRunAt: now + (currentSettings.autopilot.intervalMinutes || 120) * 60000,
+      nextRunAt: null, // Fixed static schedule (No ticking timer)
       lastReplyRunAt: lastReply ? lastReply.at : null,
-      nextReplyRunAt: now + (currentSettings.autopilot.replyIntervalMinutes || 30) * 60000,
+      nextReplyRunAt: null,
       llmReady: true,
       threadsReady: true,
       log: logs,
@@ -419,7 +419,8 @@ export function initWebFallbackApi() {
     }
 
     const st = await getDynamicStatus()
-    return { ...st, busy: false, running: true }
+    // CRITICAL BUGFIX: Do NOT mutate running state to true when generating a draft! Keep user's enabled setting!
+    return { ...st, busy: false, running: currentSettings.autopilot.enabled }
   }
 
   ;(window as unknown as { api: unknown }).api = {
@@ -498,11 +499,8 @@ export function initWebFallbackApi() {
     autopilotSetRunning: async (running: boolean) => {
       currentSettings.autopilot.enabled = running
       persistSettings(currentSettings)
-      if (running) {
-        return runSinglePass()
-      }
       const st = await getDynamicStatus()
-      return { ...st, running: false }
+      return { ...st, running }
     },
     autopilotRunNow: runSinglePass,
     autopilotClearLogs: async () => {
