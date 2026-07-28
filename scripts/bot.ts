@@ -125,24 +125,25 @@ News Title: ${selectedNews.title}
 News Source: ${selectedNews.source}
 
 STRICT RULES:
-1. MUST fit within a single mobile Threads screen (under 400 Korean characters).
+1. MUST fit within a single mobile Threads screen (STRICTLY UNDER 300 Korean characters).
 2. Summarize 2-3 concise, clear lines explaining WHAT happened in the news so readers understand facts without clicking.
 3. Add 1-2 lines of human perspective or why this topic matters.
 4. The LAST LINE MUST be a CREATIVE, TOPIC-SPECIFIC question asking readers about their opinion or experience on this specific news item. NO generic "어떻게 생각하시나요?".
-5. Output ONLY the final post body text in Korean.`
+5. NO robotic prefixes like 🤖. Output ONLY the final post body text in Korean.`
     } else {
       console.log(`💡 Non-news / Original Content Topic: "${topic}"`)
       prompt = `You are an engaging Threads creator named "${config.agentName}".
 Topic: ${topic} (Relationship Psychology, Self-Improvement, Productivity, or Technology Insight)
 
 STRICT RULES:
-1. MUST fit within a single mobile Threads screen (under 400 Korean characters).
+1. MUST fit within a single mobile Threads screen (STRICTLY UNDER 300 Korean characters).
 2. Start with a catchy headline or intriguing psychological/life principle.
 3. Explain 2-3 concise, actionable lines with concrete wisdom or examples.
 4. The LAST LINE MUST be a CREATIVE, TOPIC-SPECIFIC question directly related to this topic.
-5. Make it sound 100% human, warm, and conversational. NO robotic prefixes.
+5. Make it sound 100% human, warm, and conversational. NO robotic prefixes like 🤖.
 6. Output ONLY the final post body text in Korean.`
     }
+
 
     let postText = ''
     if (geminiApiKey) {

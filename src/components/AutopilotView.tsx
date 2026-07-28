@@ -449,60 +449,26 @@ export default function AutopilotView() {
             </div>
 
             <div className="field" style={{ marginBottom: '16px' }}>
-              <span className="field-label" style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px', display: 'block' }}>
-                {t('Schedule Mode', '스케줄 방식 선택')}
-              </span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <div
-                  onClick={() => edit({ scheduleMode: 'interval' })}
-                  style={{
-                    padding: '14px',
-                    borderRadius: '10px',
-                    border: `2px solid ${form.scheduleMode !== 'times' ? '#0070f3' : 'var(--border-color, #333)'}`,
-                    background: form.scheduleMode !== 'times' ? 'rgba(0, 112, 243, 0.08)' : 'transparent',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>1. {t('Interval Mode', '기존 N분 주기 방식')}</div>
-                  <div style={{ fontSize: '12px', opacity: 0.8 }}>{t('Posts every N minutes continuously', '지정한 분(N분) 간격마다 지속적으로 게시')}</div>
+              <div style={{
+                background: 'rgba(255, 170, 0, 0.1)',
+                border: '1px solid rgba(255, 170, 0, 0.3)',
+                borderRadius: '8px',
+                padding: '14px 16px',
+                marginBottom: '16px',
+                fontSize: '13px',
+                lineHeight: '1.5',
+              }}>
+                <div style={{ fontWeight: 600, color: '#ffa000', marginBottom: '6px', fontSize: '14px' }}>
+                  🌅 새벽 02:00 일괄 생성 & 정시 가동 시스템 (한국시간 KST 기준)
                 </div>
-                <div
-                  onClick={() => edit({ scheduleMode: 'times' })}
-                  style={{
-                    padding: '14px',
-                    borderRadius: '10px',
-                    border: `2px solid ${form.scheduleMode === 'times' ? '#0070f3' : 'var(--border-color, #333)'}`,
-                    background: form.scheduleMode === 'times' ? 'rgba(0, 112, 243, 0.08)' : 'transparent',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>2. {t('Fixed Times Mode', '한국시간 지정 시각 방식')}</div>
-                  <div style={{ fontSize: '12px', opacity: 0.8 }}>{t('Posts at target KST times (3h advanced auto-calc)', '지정한 한국 시각에 게시 (3시간 전 자동 차감 가동)')}</div>
+                <div>
+                  매일 새벽 02:00 KST에 하루치 5개 포스트를 일괄 자동 생성하고, 지정 시각에 맞춰 <b>무작위 분(Minute) 노이즈(±10분)</b>를 섞어 사람처럼 자연스럽게 올려줍니다.
+                </div>
+                <div style={{ marginTop: '8px', padding: '10px', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '6px', fontSize: '12px', fontFamily: 'monospace' }}>
+                  <div>• 목표 게시 시각 (KST): 06:00 | 11:30 | 15:00 | 18:00 | 21:00</div>
+                  <div style={{ color: '#4caf50' }}>• 실제 발송 시각: 무작위 노이즈 적용 (예: 05:52, 11:38, 15:07, 18:14, 21:03)</div>
                 </div>
               </div>
-
-              {form.scheduleMode === 'times' && (
-                <div style={{
-                  background: 'rgba(255, 170, 0, 0.1)',
-                  border: '1px solid rgba(255, 170, 0, 0.3)',
-                  borderRadius: '8px',
-                  padding: '12px 14px',
-                  marginBottom: '16px',
-                  fontSize: '13px',
-                  lineHeight: '1.5',
-                }}>
-                  <div style={{ fontWeight: 600, color: '#ffa000', marginBottom: '6px' }}>
-                    💡 새벽 02:00 일괄 생성 & 정시 가동 시스템 (한국시간 KST 기준)
-                  </div>
-                  <div>
-                    매일 새벽 02:00 KST에 하루치 5개 포스트를 일괄 자동 생성하고, 설정하신 지정 시각에 맞춰 <b>무작위 분(Minute) 노이즈(±10분)</b>를 섞어 사람처럼 자연스럽게 올립니다.
-                  </div>
-                  <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '6px', fontSize: '12px', fontFamily: 'monospace' }}>
-                    <div>• 목표 시각 (KST): 06:00 | 11:30 | 15:00 | 18:00 | 21:00</div>
-                    <div style={{ color: '#4caf50' }}>• 실제 발송 시각: 무작위 노이즈 적용 (예: 05:52, 11:38, 15:07, 18:14, 21:03)</div>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="field" style={{ marginBottom: '16px' }}>
@@ -539,46 +505,23 @@ export default function AutopilotView() {
               </div>
             </div>
 
-
             <div className="row">
               <div className="field grow">
-                <span className="field-label">{t('Post / think every (min)', '게시 판단 주기(분)')}</span>
+                <span className="field-label">{t('Max posts / day', '하루 최대 게시 수')}</span>
                 <input
                   className="input"
                   type="number"
                   min={1}
-                  value={form.intervalMinutes}
-                  onChange={(e) => edit({ intervalMinutes: e.target.valueAsNumber })}
-                  onBlur={() => edit({ intervalMinutes: num(form.intervalMinutes, 1, 1440, 60) })}
-                />
-                <span className="hint">{t('Plans and creates posts.', '게시물을 계획·작성합니다.')}</span>
-              </div>
-              <div className="field grow">
-                <span className="field-label">{t('Max posts / run', '실행당 최대 게시')}</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={form.maxPostsPerRun}
-                  onChange={(e) => edit({ maxPostsPerRun: e.target.valueAsNumber })}
-                  onBlur={() => edit({ maxPostsPerRun: num(form.maxPostsPerRun, 1, 10, 1) })}
-                />
-              </div>
-              <div className="field grow">
-                <span className="field-label">{t('Max posts / day', '하루 최대 게시')}</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={96}
+                  max={20}
                   value={form.maxPostsPerDay}
                   onChange={(e) => edit({ maxPostsPerDay: e.target.valueAsNumber })}
-                  onBlur={() => edit({ maxPostsPerDay: num(form.maxPostsPerDay, 1, 96, 6) })}
+                  onBlur={() => edit({ maxPostsPerDay: num(form.maxPostsPerDay, 1, 20, 5) })}
                 />
+                <span className="hint">{t('Maximum posts allowed per day (Default 5).', '하루에 포스팅할 최대 글 수 (기본 5개)')}</span>
               </div>
             </div>
             <div className="field">
+
               <span className="field-label">
                 {t('Original vs news', '오리지널 vs 뉴스')}: {form.originalRatio}% {t('original', '오리지널')}
               </span>

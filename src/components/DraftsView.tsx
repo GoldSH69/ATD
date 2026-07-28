@@ -166,19 +166,22 @@ function DraftEditor({ draft }: { draft: Draft }) {
           {`Replying to @${draft.replyToUsername ?? ''}: "${snippet(draft.replyToText ?? '', 140)}"`}
         </div>
       )}
-      {draft.kind === 'post' && draft.sourceTitle && (
+      {draft.kind === 'post' && (
         <div className="editor-context">
-          From news: {draft.sourceTitle}
-          {sourceUrl && (
+          {sourceUrl && sourceUrl.startsWith('http') && !sourceUrl.includes('news.google.com') ? (
             <>
+              📰 뉴스 출처: {draft.sourceTitle || '관련 기사'}
               {' · '}
               <button className="link" onClick={() => void window.api.openExternal(sourceUrl)}>
-                open
+                기사 원문 열기 (open)
               </button>
             </>
+          ) : (
+            <>✨ AI 오리지널 지식/인사이트 포스트</>
           )}
         </div>
       )}
+
       {draft.status === 'failed' && draft.error && (
         <div className="test-result err" style={{ margin: '10px 20px 0' }}>
           {draft.error}
