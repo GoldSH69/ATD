@@ -37,6 +37,7 @@ const defaultSettings: AppSettings = {
   autopilot: {
     enabled: false,
     goLive: true,
+    autoApprove: false,
     scheduleMode: 'times',
     postingTimes: ['06:00', '11:30', '15:00', '18:00', '21:00'],
     intervalMinutes: 120,
@@ -47,7 +48,7 @@ const defaultSettings: AppSettings = {
     toneNotes: '친근하고 위트 있는 유저 어조',
     maxPostsPerDay: 5,
     maxPostsPerRun: 1,
-    originalRatio: 0.3,
+    originalRatio: 0.8,
     agentName: 'AutoThreads Bot',
     creatorName: 'Jimmy',
     creatorHandle: 'goldsh69',
@@ -151,23 +152,53 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
   }
 
   return [
-    { title: `오픈AI & 구글 차세대 온디바이스 AI 기술 경쟁 가속화`, link: 'https://news.google.com', source: '테크뉴스', publishedAt: Date.now(), topic: q, snippet: '스마트폰과 PC에서 서버 연결 없이 작동하는 고성능 초경량 AI 모델이 잇따라 공개되며 유저들의 관심이 쏠리고 있습니다.' },
-    { title: `2026 글로벌 스타트업 생태계와 주목받는 신규 비즈니스 동향`, link: 'https://news.google.com', source: '글로벌이슈', publishedAt: Date.now() - 3600000, topic: q, snippet: '새로운 기술과 사용자 경험을 무기로 빠르게 시장 영역을 넓혀가는 혁신 스타트업들의 대규모 투자 소식이 연이어 발표되었습니다.' },
+    { title: `오픈AI 차세대 AI 모델 발표 및 글로벌 투자 유치`, link: 'https://news.google.com', source: '테크뉴스', publishedAt: Date.now(), topic: q, snippet: '스마트폰과 PC에서 서버 연결 없이 작동하는 고성능 초경량 AI 모델이 잇따라 공개되며 글로벌 기술 시장의 호응을 이끌어내고 있습니다.' },
+    { title: `배달의민족 로봇 배달 서비스 전국 시범 운행 개시`, link: 'https://news.google.com', source: '글로벌이슈', publishedAt: Date.now() - 3600000, topic: q, snippet: '새로운 자동화 기술과 사용자 경험을 무기로 실생활 배송 영역을 넓혀가는 스마트 무인 로봇 배달 서비스 소식이 알려졌습니다.' },
   ]
 }
 
-function buildNaturalHumanPost(newsTitle: string, topic?: string, snippet?: string): string {
-  const title = cleanTitle(newsTitle)
-  const cleanSnippet = snippet ? cleanTitle(snippet).replace(/<[^>]+>/g, '').slice(0, 130) : ''
+function buildOriginalInsightPost(topic?: string): string {
   const lowerTopic = (topic || '').toLowerCase()
 
   if (lowerTopic.includes('심리') || lowerTopic.includes('관계') || lowerTopic.includes('psychology') || lowerTopic.includes('인간관계')) {
-    const originalPosts = [
+    const psychologyPosts = [
       `💡 상대방과의 대화에서 호감을 3배 높이는 '스몰톡' 심리학 법칙\n\n사람은 자기가 대화를 주도할 때 뇌에서 가장 많은 도파민이 분비됩니다. 대화할 때 내 이야기보다 상대방의 경험이나 취향을 묻는 질문 비율을 70%로 올려보세요!\n\n거부감 없이 순식간에 깊은 친밀감이 형성됩니다 🌿\n\n오늘 누군가와 대화할 때 어떤 질문으로 말을 건네보고 싶으신가요? 💬`,
       `🌿 감정 소비를 줄이고 마음의 평정을 유지하는 '심리적 거리두기'\n\n타인의 부정적인 말이나 반응에 즉각 반응하지 않고 3초간 숨을 고르는 것만으로도 뇌의 편도체 흥분이 가라앉습니다. 내 마음의 주도권을 남에게 넘겨주지 않는 가장 쉬운 방법이죠.\n\n평소 타인의 말에 상처받을 때 자신만의 마음 조율법이 있으신가요? 💡`,
     ]
-    return originalPosts[Math.floor(Math.random() * originalPosts.length)]
+    return psychologyPosts[Math.floor(Math.random() * psychologyPosts.length)]
   }
+
+  if (lowerTopic.includes('생산성') || lowerTopic.includes('productivity') || lowerTopic.includes('자기계발')) {
+    const productivityPosts = [
+      `⚡ 하루 집중력을 2배로 올리는 '25분 몰입 5분 휴식' 포모도로 기법\n\n인간의 뇌가 최상의 집중 상태를 유지할 수 있는 시간은 의외로 짧습니다. 긴 시간 억지로 버티는 대신 25분간 한 가지 일에만 몰입하고 5분간 완전히 쉬어보세요.\n\n피로도 없이 하루 작업량이 획기적으로 늘어납니다 🚀\n\n여러분은 일을 시작할 때 집중력을 올리는 자신만의 루틴이 있으신가요? 💬`,
+      `🧠 뇌의 기억 낭비를 막아주는 '두 번째 뇌(Second Brain)' 메모법\n\n머릿속에 아이디어와 할 일을 쌓아두면 뇌는 끊임없이 무의식적 스트레스를 받습니다. 떠오르는 즉시 디지털 메모 앱에 기록하고 머리를 비워두세요.\n\n생각의 명확성과 창의성이 비약적으로 증가합니다 💡\n\n평소 중요한 생각이나 아이디어를 기록하는 나만의 노하우가 있다면 공유해주세요!`,
+    ]
+    return productivityPosts[Math.floor(Math.random() * productivityPosts.length)]
+  }
+
+  if (lowerTopic.includes('humor') || lowerTopic.includes('유머') || lowerTopic.includes('드립') || lowerTopic.includes('meme')) {
+    const humorPosts = [
+      `🤣 퇴근길 피로 싹 날려주는 요즘 지능형 유머 드립 모음\n\n월요일 아침 출근길에 내 뇌가 작동을 거부할 때 떠오르는 짤들이 커뮤니티에서 유난히 핫하네요 ㅋㅋㅋ 소소하지만 웃으면서 힐링하기 딱 좋습니다!\n\n다들 오늘 피드에서 보고 가장 피식했던 터지는 소식이나 짤 있으신가요? 💬`,
+      `😄 피식 터지는 소소한 대화 짤 & 인스타 레전드 반응 모음\n\n바쁜 하루 끝에 아무 생각 없이 웃을 수 있는 드립들이 유난히 많은 하루네요 ㅋㅋㅋ 피로로 지친 하루에 소소한 웃음 보너스가 되길 바랍니다!\n\n다들 오늘 가장 웃겼던 포인트나 재미있는 짤 공유해주세요 😃`,
+    ]
+    return humorPosts[Math.floor(Math.random() * humorPosts.length)]
+  }
+
+  const techPosts = [
+    `🤖 온디바이스 AI 시대가 가져올 우리 일상의 구체적인 변화\n\n서버 연결 없이 내 스마트폰과 PC에서 직접 구동되는 AI는 반응 속도가 3배 이상 빠르고 개인정보 유출 걱정이 없습니다. 조만간 인터넷이 안 되는 환경에서도 완전한 자동화 조교를 쓰게 될 것입니다.\n\n여러분은 기기 자체에서 구동되는 AI 기능이 나온다면 가장 먼저 어디에 써보고 싶으신가요? 🚀`,
+    `🚀 차세대 AI 스마트 워크플로우가 바꿔놓을 업무의 미래\n\n단순 반복 업무와 단순 서류 작성을 AI가 80% 이상 전담하면서, 인간은 기획과 창의적인 판단에만 전념하는 구조로 빠르게 재편되고 있습니다.\n\n기술의 변화 속에서 여러분이 가장 기대하는 업무의 효율성은 무엇인가요? 💬`,
+  ]
+  return techPosts[Math.floor(Math.random() * techPosts.length)]
+}
+
+function buildNaturalHumanPost(newsTitle: string, topic?: string, snippet?: string): string {
+  if (!newsTitle || newsTitle.includes('최신') || newsTitle.includes('이슈 한눈에')) {
+    return buildOriginalInsightPost(topic)
+  }
+
+  const title = cleanTitle(newsTitle)
+  const cleanSnippet = snippet ? cleanTitle(snippet).replace(/<[^>]+>/g, '').slice(0, 130) : ''
+  const lowerTopic = (topic || '').toLowerCase()
 
   if (lowerTopic.includes('humor') || lowerTopic.includes('유머') || lowerTopic.includes('드립') || lowerTopic.includes('meme')) {
     const summary = cleanSnippet || '오늘 커뮤니티와 SNS에서 유난히 높은 조회수와 폭발적인 댓글 반응을 얻고 있는 재미있는 유머 소식입니다.'
@@ -191,7 +222,7 @@ function buildNaturalHumanPost(newsTitle: string, topic?: string, snippet?: stri
     return `📢 ${title}\n\n${summary}\n\n새로운 시장 기회를 포착한 시도라 앞으로의 성장 궤적이 사뭇 주목됩니다 🚀\n\n${ending}`
   }
 
-  const summary = cleanSnippet || '최신 기술 동향과 시장 흐름이 빠르게 변화함에 따라 관련 서비스와 주요 지표들이 큰 주목을 받고 있는 이슈입니다.'
+  const summary = cleanSnippet || '스마트폰과 PC에서 서버 연결 없이 작동하는 차세대 온디바이스 AI 기술이 대거 도입되는 핫이슈 소식입니다.'
   const endings = [
     '이 기술이나 서비스가 실제 일상에 도입된다면 여러분은 써보실 건가요? 🤖',
     '기존 방식과 비교했을 때 어느 쪽이 더 혁신적이라고 느껴지시나요? 솔직한 의견이 궁금합니다! 🚀',
@@ -209,7 +240,6 @@ export function initWebFallbackApi() {
   let currentSettings: AppSettings = defaultSettings
   let currentDrafts: Draft[] = []
 
-  // Check localStorage FIRST so user choices take 100% priority
   try {
     const savedSettings = localStorage.getItem('autothreads_settings')
     if (savedSettings) {
@@ -327,26 +357,26 @@ export function initWebFallbackApi() {
   }
 
   const runSinglePass = async (): Promise<AutopilotStatus> => {
-    const topics = currentSettings.topics.length > 0 ? currentSettings.topics : ['관계심리학', 'AI', '기술']
-    const shuffledTopics = [...topics].sort(() => 0.5 - Math.random())
+    const topics = currentSettings.topics.length > 0 ? currentSettings.topics : ['관계심리학', 'AI', '기술', '생산성']
+    const selectedTopic = topics[Math.floor(Math.random() * topics.length)] || '관계심리학'
+    const isOriginal = Math.random() < (currentSettings.autopilot.originalRatio ?? 0.8)
 
-    let selectedNews: NewsItem | null = null
-    let selectedTopic = ''
+    let postText = ''
+    let title = ''
 
-    for (const t of shuffledTopics) {
-      const news = await fetchGoogleNewsWeb(t)
+    if (!isOriginal) {
+      const news = await fetchGoogleNewsWeb(selectedTopic)
       if (news && news.length > 0) {
-        selectedNews = news[Math.floor(Math.random() * news.length)]
-        selectedTopic = t
-        break
+        const selectedNews = news[Math.floor(Math.random() * news.length)]
+        title = selectedNews.title
+        postText = buildNaturalHumanPost(title, selectedTopic, selectedNews.snippet)
       }
     }
 
-    if (!selectedTopic) selectedTopic = shuffledTopics[0] || '관계심리학'
-    const title = selectedNews ? selectedNews.title : `'${selectedTopic}' 인사이트 리포트`
-    const snippet = selectedNews ? selectedNews.snippet : undefined
-
-    const postText = buildNaturalHumanPost(title, selectedTopic, snippet)
+    if (!postText) {
+      postText = buildOriginalInsightPost(selectedTopic)
+      title = `${selectedTopic} 인사이트`
+    }
 
     const newDraft: Draft = {
       id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -354,7 +384,7 @@ export function initWebFallbackApi() {
       text: postText,
       topic: selectedTopic,
       sourceTitle: title,
-      sourceUrl: selectedNews?.link || 'https://news.google.com',
+      sourceUrl: 'https://news.google.com',
       status: 'draft',
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -403,15 +433,23 @@ export function initWebFallbackApi() {
     threadsScrapeStyle: async () => [],
     newsFetch: async (input: { query?: string }) => fetchGoogleNewsWeb(input?.query || 'AI'),
     generatePost: async (input: { topic?: string; newsTitle?: string; newsSource?: string; newsUrl?: string }) => {
-      const title = input?.newsTitle || '최신 산업 및 기술 소식'
-      const text = buildNaturalHumanPost(title, input?.topic)
+      const topic = input?.topic || '관계심리학'
+      const isOriginal = !input?.newsTitle || Math.random() < (currentSettings.autopilot.originalRatio ?? 0.8)
+      
+      let text = ''
+      if (!isOriginal && input?.newsTitle) {
+        text = buildNaturalHumanPost(input.newsTitle, topic)
+      } else {
+        text = buildOriginalInsightPost(topic)
+      }
+
       const now = Date.now()
       const draft: Draft = {
         id: `draft-${now}-${Math.random().toString(36).slice(2, 6)}`,
         kind: 'post',
         text,
-        topic: input?.topic || 'AI',
-        sourceTitle: title,
+        topic: topic,
+        sourceTitle: input?.newsTitle || `${topic} 인사이트`,
         sourceUrl: input?.newsUrl,
         status: 'draft',
         createdAt: now,
