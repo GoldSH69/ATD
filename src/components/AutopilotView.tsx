@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../store/appStore'
 import { AUTOPILOT_CATEGORIES, AUTOPILOT_DEFAULT_CATEGORIES, AUTOPILOT_POPULAR_CATEGORY_IDS } from '../types'
-import type { AppSettings, AutopilotSettings, PostLanguageMode } from '../types'
+import type { AppSettings, AutopilotSettings, AutopilotStatus, PostLanguageMode } from '../types'
+
 import { timeAgo } from '../util/format'
 
 /**
@@ -683,7 +684,26 @@ export default function AutopilotView() {
 
           {/* activity log */}
           <div className="section">
-            <div className="section-title">{t('Activity', '활동 로그')}</div>
+            <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>{t('Activity', '활동 로그')}</span>
+              {status && status.log && status.log.length > 0 && (
+                <button
+                  className="btn small ghost"
+                  style={{ fontSize: '12px', opacity: 0.85, cursor: 'pointer' }}
+                  onClick={async () => {
+                    const clearFn = (window.api as unknown as { autopilotClearLogs?: () => Promise<AutopilotStatus> }).autopilotClearLogs
+                    if (clearFn) {
+                      const st = await clearFn()
+                      useApp.setState({ autopilot: st })
+                      toast('ok', t('Logs cleared', '활동 로그를 비웠습니다'))
+                    }
+                  }}
+                >
+                  🗑️ {t('Clear logs', '로그 비우기')}
+                </button>
+              )}
+            </div>
+
             <div className="ap-log">
               {!status || status.log.length === 0 ? (
                 <div className="hint">{t('No activity yet. Launch to begin.', '아직 활동이 없습니다. 시작해 보세요.')}</div>

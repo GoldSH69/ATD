@@ -394,7 +394,17 @@ export function initWebFallbackApi() {
       return { ...st, running: false }
     },
     autopilotRunNow: runSinglePass,
+    autopilotClearLogs: async () => {
+      try {
+        localStorage.removeItem('autothreads_web_logs')
+      } catch {
+        // Ignore
+      }
+      const st = await getDynamicStatus()
+      return { ...st, log: [] }
+    },
     openExternal: (url: string) => window.open(url, '_blank'),
+
     onDraftsChanged: () => {},
     onAutopilotStatus: () => {},
   }
