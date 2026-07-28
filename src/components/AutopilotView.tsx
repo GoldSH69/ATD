@@ -79,11 +79,17 @@ export default function AutopilotView() {
   const persist = async (): Promise<boolean> => {
     setSaving(true)
     const enabled = status?.running ?? form.enabled
-    const ok = await saveSettings({ ...settings, autopilot: { ...form, enabled } })
+    const syncedTopics = Array.from(new Set([...form.categories, ...(settings.topics || [])]))
+    const ok = await saveSettings({
+      ...settings,
+      topics: syncedTopics,
+      autopilot: { ...form, enabled },
+    })
     setSaving(false)
     if (ok) setDirty(false)
     return ok
   }
+
 
   const save = async () => {
     if (await persist()) toast('ok', t('Autopilot settings saved', '자동 설정을 저장했습니다'))

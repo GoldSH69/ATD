@@ -124,12 +124,17 @@ export default function SettingsView() {
 
   const persistForm = async (): Promise<boolean> => {
     setSaving(true)
-    // Keep whatever theme is current in the store; theme is not part of this form's diff.
     const latest = useApp.getState().settings
-    const ok = await saveSettings({ ...form, theme: latest?.theme ?? form.theme })
+    const syncedCategories = Array.from(new Set([...form.topics, ...(form.autopilot?.categories || [])]))
+    const ok = await saveSettings({
+      ...form,
+      theme: latest?.theme ?? form.theme,
+      autopilot: { ...form.autopilot, categories: syncedCategories },
+    })
     setSaving(false)
     return ok
   }
+
 
   const save = async () => {
     const ok = await persistForm()
