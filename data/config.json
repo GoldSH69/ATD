@@ -1,8 +1,17 @@
-{
   "enabled": true,
+  "scheduleMode": "times",
+  "postingTimes": [
+    "06:00",
+    "11:30",
+    "15:00",
+    "18:00",
+    "21:00"
+  ],
   "intervalMinutes": 120,
   "replyIntervalMinutes": 30,
-  "maxPostsPerDay": 6,
+  "maxPostsPerDay": 5,
+
+
   "maxRepliesPerDay": 20,
   "maxPostsPerRun": 1,
   "maxRepliesPerRun": 3,

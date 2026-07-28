@@ -447,6 +447,64 @@ export default function AutopilotView() {
                 '게시 판단과 답글·멘션 확인은 서로 다른 주기로 동작합니다. 게시를 늘리지 않고도 답글을 더 자주 처리할 수 있습니다.'
               )}
             </div>
+
+            <div className="field" style={{ marginBottom: '16px' }}>
+              <span className="field-label" style={{ fontWeight: 600, fontSize: '14px', marginBottom: '8px', display: 'block' }}>
+                {t('Schedule Mode', '스케줄 방식 선택')}
+              </span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div
+                  onClick={() => edit({ scheduleMode: 'interval' })}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '10px',
+                    border: `2px solid ${form.scheduleMode !== 'times' ? '#0070f3' : 'var(--border-color, #333)'}`,
+                    background: form.scheduleMode !== 'times' ? 'rgba(0, 112, 243, 0.08)' : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>1. {t('Interval Mode', '기존 N분 주기 방식')}</div>
+                  <div style={{ fontSize: '12px', opacity: 0.8 }}>{t('Posts every N minutes continuously', '지정한 분(N분) 간격마다 지속적으로 게시')}</div>
+                </div>
+                <div
+                  onClick={() => edit({ scheduleMode: 'times' })}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '10px',
+                    border: `2px solid ${form.scheduleMode === 'times' ? '#0070f3' : 'var(--border-color, #333)'}`,
+                    background: form.scheduleMode === 'times' ? 'rgba(0, 112, 243, 0.08)' : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>2. {t('Fixed Times Mode', '한국시간 지정 시각 방식')}</div>
+                  <div style={{ fontSize: '12px', opacity: 0.8 }}>{t('Posts at target KST times (3h advanced auto-calc)', '지정한 한국 시각에 게시 (3시간 전 자동 차감 가동)')}</div>
+                </div>
+              </div>
+
+              {form.scheduleMode === 'times' && (
+                <div style={{
+                  background: 'rgba(255, 170, 0, 0.1)',
+                  border: '1px solid rgba(255, 170, 0, 0.3)',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  marginBottom: '16px',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                }}>
+                  <div style={{ fontWeight: 600, color: '#ffa000', marginBottom: '6px' }}>
+                    💡 깃허브 서버 지연 보상 가이드 (한국시간 KST 기준)
+                  </div>
+                  <div>
+                    목표 한국시간(KST)을 설정하면, 깃허브 서버의 지연을 보상하기 위해 <b>3시간 일찍(KST -3시간)</b> 깃허브 서버에서 출발하여 정시 부근에 포스팅이 완료됩니다.
+                  </div>
+                  <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '6px', fontSize: '12px', fontFamily: 'monospace' }}>
+                    <div>• 목표 시각 (KST): 06:00 | 11:30 | 15:00 | 18:00 | 21:00</div>
+                    <div style={{ color: '#4caf50' }}>• 3시간전 출발 (KST): 03:00 | 08:30 | 12:00 | 15:00 | 18:00</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="row">
               <div className="field grow">
                 <span className="field-label">{t('Post / think every (min)', '게시 판단 주기(분)')}</span>
