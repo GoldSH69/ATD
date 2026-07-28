@@ -29,6 +29,8 @@ interface LogEntry {
 }
 
 const isDryRun = process.argv.includes('--dry-run')
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const MIN_INTERVAL_MS = 60 * 60 * 1000 // Minimum 1 hour between live posts for safety
 
 async function runBot() {
   console.log('🤖 AutoThreads GitHub Actions Bot started.')
@@ -36,6 +38,7 @@ async function runBot() {
 
   const configPath = path.join(process.cwd(), 'data', 'config.json')
   const logsPath = path.join(process.cwd(), 'data', 'logs.json')
+  const usedArticlesPath = path.join(process.cwd(), 'data', 'used_articles.json')
 
   if (!fs.existsSync(configPath)) {
     console.error('Config file data/config.json not found!')
@@ -62,6 +65,15 @@ async function runBot() {
     }
   }
 
+  let usedArticles: string[] = []
+  if (fs.existsSync(usedArticlesPath)) {
+    try {
+      usedArticles = JSON.parse(fs.readFileSync(usedArticlesPath, 'utf-8'))
+    } catch {
+      usedArticles = []
+    }
+  }
+
   const addLog = (kind: LogEntry['kind'], message: string, permalink?: string) => {
     const entry: LogEntry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -75,27 +87,57 @@ async function runBot() {
     console.log(`[${kind.toUpperCase()}] ${message}`)
   }
 
-  // Pick a random topic/category
+  // --- 🛡️ SAFETY GUARD 1: Daily Post Cap Check ---
+  const posts24h = logs.filter(
+    (l) => l.kind === 'post' && Date.now() - l.at < ONE_DAY_MS && !l.message.includes('Dry-run')
+  )
+  const maxPostsPerDay = config.maxPostsPerDay || 4
+
+  if (!isDryRun && posts24h.length >= maxPostsPerDay) {
+    addLog(
+      'info',
+      `🛡️ Safety Guard: Reached daily post cap (${posts24h.length}/${maxPostsPerDay} posts in last 24h). Skipping run to protect account safety.`
+    )
+    fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
+    return
+  }
+
+  // --- 🛡️ SAFETY GUARD 2: Minimum Interval Check ---
+  const lastPost = logs.find((l) => l.kind === 'post' && !l.message.includes('Dry-run'))
+  if (!isDryRun && lastPost && Date.now() - lastPost.at < MIN_INTERVAL_MS) {
+    const elapsedMinutes = Math.floor((Date.now() - lastPost.at) / 60000)
+    addLog(
+      'info',
+      `🛡️ Safety Guard: Only ${elapsedMinutes} minutes elapsed since last post. Enforcing minimum 60-minute interval. Skipping run.`
+    )
+    fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
+    return
+  }
+
+  // Pick a topic
   const topicsList = config.topics.length > 0 ? config.topics : ['AI', '기술', '생산성']
   const topic = topicsList[Math.floor(Math.random() * topicsList.length)]
 
   console.log(`🔍 Fetching news for topic: "${topic}"...`)
   const newsList = await fetchGoogleNews(topic)
 
-  if (newsList.length === 0) {
-    addLog('info', `No news articles found for topic "${topic}". Skipping run.`)
+  // Filter out articles that have already been posted
+  const freshNews = newsList.filter((n) => !usedArticles.includes(n.title))
+
+  if (freshNews.length === 0) {
+    addLog('info', `No new unposted articles found for topic "${topic}". Skipping run.`)
     fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
     return
   }
 
-  const selectedNews = newsList[Math.floor(Math.random() * newsList.length)]
+  const selectedNews = freshNews[Math.floor(Math.random() * freshNews.length)]
   console.log(`📰 Selected article: "${selectedNews.title}" (${selectedNews.source})`)
 
   if (!geminiApiKey) {
     const msg = 'GEMINI_API_KEY environment variable is not set.'
     if (isDryRun) {
       console.warn(`⚠️  ${msg} Skipping AI generation in dry-run.`)
-      addLog('info', `[Dry-run] Article selected: ${selectedNews.title}`)
+      addLog('info', `[Dry-run] Selected article: ${selectedNews.title}`)
     } else {
       addLog('error', msg)
       fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2))
@@ -117,7 +159,7 @@ Source: ${selectedNews.source}
 Rules:
 1. Make it sound natural, human, and conversational.
 2. End with an open-ended question to invite comments.
-3. Do NOT use hashtags or robotic corporate language.
+3. Do NOT use hashtags, emojis spam, or robotic corporate language.
 4. Output ONLY the post body text in Korean.`
 
   console.log('🤖 Generating post content with Gemini API...')
@@ -137,6 +179,11 @@ Rules:
       }
       const res = await publishPost(threadsConfig, postText)
       addLog('post', `Successfully published post: "${postText.slice(0, 60)}..."`, res.permalink)
+
+      // Save article to used_articles history
+      usedArticles.push(selectedNews.title)
+      if (usedArticles.length > 200) usedArticles = usedArticles.slice(-200)
+      fs.writeFileSync(usedArticlesPath, JSON.stringify(usedArticles, null, 2))
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err)
