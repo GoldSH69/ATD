@@ -71,6 +71,12 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, '&')
 }
 
+function cleanTitle(s: string): string {
+  return decodeEntities(s)
+    .replace(/\s*-\s*[^-]+$/, '')
+    .trim()
+}
+
 function tagText(block: string, tag: string): string {
   const m = block.match(
     new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`)
@@ -88,7 +94,7 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
       const data = (await res.json()) as { items?: Array<{ title?: string; link?: string; author?: string; pubDate?: string }> }
       if (data && Array.isArray(data.items) && data.items.length > 0) {
         return data.items.map((it) => ({
-          title: decodeEntities(it.title || ''),
+          title: cleanTitle(it.title || ''),
           link: it.link || 'https://news.google.com',
           source: it.author || 'Google News',
           publishedAt: it.pubDate ? Date.parse(it.pubDate) : Date.now(),
@@ -110,8 +116,9 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
       let m: RegExpExecArray | null
       while ((m = itemRe.exec(xml)) !== null && items.length < 20) {
         const block = m[1]
-        const title = tagText(block, 'title')
-        if (!title) continue
+        const rawTitle = tagText(block, 'title')
+        if (!rawTitle) continue
+        const title = cleanTitle(rawTitle)
         const source = tagText(block, 'source') || 'Google News'
         const pubDate = tagText(block, 'pubDate')
         const parsed = pubDate ? Date.parse(pubDate) : NaN
@@ -130,10 +137,15 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
   }
 
   return [
-    { title: `'${q}' 분야 최신 기술 및 산업 동향 리포트`, link: 'https://news.google.com', source: '테크뉴스', publishedAt: Date.now(), topic: q },
-    { title: `글로벌 시장을 사로잡은 '${q}' 관련 주요 이슈 정리`, link: 'https://news.google.com', source: '글로벌이슈', publishedAt: Date.now() - 3600000, topic: q },
-    { title: `'${q}' 분야 전문가들이 말하는 미래 트렌드 전망`, link: 'https://news.google.com', source: 'IT 인사이트', publishedAt: Date.now() - 7200000, topic: q },
+    { title: `'${q}' 분야 글로벌 핵심 트렌드 및 산업 변화 동향`, link: 'https://news.google.com', source: '테크뉴스', publishedAt: Date.now(), topic: q },
+    { title: `시장을 선도하는 '${q}' 관련 주요 주자들의 새로운 전략 발표`, link: 'https://news.google.com', source: '글로벌이슈', publishedAt: Date.now() - 3600000, topic: q },
+    { title: `'${q}' 서비스 사용자 반응 및 향후 성장 가능성 분석`, link: 'https://news.google.com', source: 'IT 인사이트', publishedAt: Date.now() - 7200000, topic: q },
   ]
+}
+
+function buildNaturalHumanPost(newsTitle: string): string {
+  const title = cleanTitle(newsTitle)
+  return `요즘 관심 갖고 보고 있는 소식이네요! 👀\n\n"${title}"\n\n최근 시장 흐름이 정말 빠르게 바뀌고 있는 것 같습니다. 트렌드 변화를 유심히 지켜볼 필요가 있어 보이는데, 앞으로의 영향력이 사뭇 기대됩니다.\n\n여러분은 이 소식에 대해 어떻게 생각하시나요? 자유롭게 의견 남겨주세요!`
 }
 
 export function initWebFallbackApi() {
@@ -229,14 +241,14 @@ export function initWebFallbackApi() {
     const topic = currentSettings.topics[Math.floor(Math.random() * currentSettings.topics.length)] || 'AI'
     const news = await fetchGoogleNewsWeb(topic)
     const selected = news[Math.floor(Math.random() * news.length)]
-    const title = selected ? selected.title : '최신 IT 및 기술 트렌드'
+    const title = selected ? selected.title : '최신 IT 및 기술 트렌드 소식'
 
-    const samplePost = `🤖 [AI 생성 포스트] "${title.slice(0, 40)}..."\n\n이 주제에 대해 어떻게 생각하시나요? 댓글로 자유롭게 의견을 나눠주세요!`
+    const postText = buildNaturalHumanPost(title)
 
     const newDraft: Draft = {
       id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       kind: 'post',
-      text: samplePost,
+      text: postText,
       topic: topic,
       sourceTitle: title,
       sourceUrl: selected?.link || 'https://news.google.com',
@@ -255,7 +267,7 @@ export function initWebFallbackApi() {
       id: `${Date.now()}-runpass`,
       at: Date.now(),
       kind: 'post',
-      message: `🚀 [완전 자동] 초안 생성 완료: "${samplePost.slice(0, 45)}..." (초안 탭에서 확인/게시 가능)`,
+      message: `🚀 초안 생성 완료: "${postText.slice(0, 45)}..." (초안 탭에서 확인/게시 가능)`,
     }
 
     const st = await getDynamicStatus()
@@ -276,14 +288,15 @@ export function initWebFallbackApi() {
     threadsScrapeStyle: async () => [],
     newsFetch: async (input: { query?: string }) => fetchGoogleNewsWeb(input?.query || 'AI'),
     generatePost: async (input: { topic?: string; newsTitle?: string; newsSource?: string; newsUrl?: string }) => {
-      const text = `🤖 [AI 생성 포스트]\n\n${input?.newsTitle || '최신 IT 소식'}\n\n여러분은 이 주제에 대해 어떻게 생각하시나요? 댓글로 의견을 나눠주세요!`
+      const title = input?.newsTitle || '최신 산업 및 기술 소식'
+      const text = buildNaturalHumanPost(title)
       const now = Date.now()
       const draft: Draft = {
         id: `draft-${now}-${Math.random().toString(36).slice(2, 6)}`,
         kind: 'post',
         text,
         topic: input?.topic || 'AI',
-        sourceTitle: input?.newsTitle,
+        sourceTitle: title,
         sourceUrl: input?.newsUrl,
         status: 'draft',
         createdAt: now,
@@ -300,7 +313,7 @@ export function initWebFallbackApi() {
 
     generateReply: async (input: { replyText?: string }) => ({
       ok: true,
-      text: `답변 감사드립니다! ${input?.replyText ? `"${input.replyText.slice(0, 20)}..."에 대한` : ''} 의견 잘 읽었습니다.`,
+      text: `좋은 의견 감사합니다! ${input?.replyText ? `"${cleanTitle(input.replyText)}" 관련` : ''} 생각을 들려주셔서 도움이 되었어요.`,
     }),
     imageKeywords: async () => ['technology', 'ai', 'future'],
     imageSearch: async () => [],
