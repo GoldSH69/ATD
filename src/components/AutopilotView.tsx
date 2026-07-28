@@ -699,6 +699,33 @@ export default function AutopilotView() {
           </div>
         </div>
       </div>
+      {dirty && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          background: '#0070f3',
+          color: '#fff',
+          padding: '12px 20px',
+          borderRadius: '12px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          zIndex: 99999
+        }}>
+          <span style={{ fontWeight: 600 }}>{t('You have unsaved changes', '⚠️ 변경된 설정이 있습니다')}</span>
+          <button
+            className="btn"
+            style={{ background: '#ffffff', color: '#000000', fontWeight: 'bold', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}
+            disabled={saving}
+            onClick={() => void save()}
+          >
+            {saving ? t('Saving…', '저장 중…') : t('Save Settings', '💾 설정 저장하기')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
+
