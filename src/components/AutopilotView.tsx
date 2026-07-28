@@ -255,11 +255,12 @@ export default function AutopilotView() {
             </div>
 
             <div className="ap-stat">
-              <span className="ap-stat-k">{t('Mode', '모드')}</span>
-              <span className="ap-stat-v">
-                {form.goLive ? t('Live', '실시간 게시') : t('Draft only', '초안만')}
+              <span className="ap-stat-k">{t('Mode', '승인 처리 모드')}</span>
+              <span className="ap-stat-v" style={{ color: form.autoApprove ? '#0070f3' : '#ffa000', fontWeight: 600 }}>
+                {form.autoApprove ? t('Auto Approve Mode', '⚡ 자동 승인 모드') : t('Manual Confirm Mode', '🙋‍♂️ 수동 승인 모드')}
               </span>
             </div>
+
           </div>
 
           {(status && (!status.llmReady || !status.threadsReady)) && (
@@ -694,28 +695,7 @@ export default function AutopilotView() {
             )}
           </div>
 
-          {/* publishing safety */}
-          <div className="section">
-            <div className="section-title">{t('Publishing', '게시 방식')}</div>
-            <div className="section-desc">
-              {t('Live posts go straight to your Threads account. Draft-only is a safety valve.', '실시간 게시는 Threads 계정에 바로 올라갑니다. 초안 모드는 안전장치입니다.')}
-            </div>
-            <div className="field">
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={form.goLive}
-                  onChange={(e) => edit({ goLive: e.target.checked })}
-                />
-                <span>{t('Publish live to Threads', 'Threads에 실시간 게시')}</span>
-              </label>
-              {!form.goLive && (
-                <span className="hint">
-                  {t('Off: the agent decides everything but only writes drafts for your review.', '끔: 에이전트가 모두 판단하되 검토용 초안만 작성합니다.')}
-                </span>
-              )}
-            </div>
-          </div>
+
 
           {/* activity log */}
           <div className="section">

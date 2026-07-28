@@ -62,19 +62,17 @@ export async function publishPost(
   const created = await apiFetch<{ id: string }>(cfg, 'POST', `/${userPath}/threads`, createParams)
   if (!created.id) throw new Error('Threads API: Creation step returned no ID')
 
-  await delay(1500)
+  // Wait 3 seconds cleanly for container processing
+  await delay(3000)
 
   let published: { id: string } | null = null
-  for (let i = 0; i < 5; i++) {
-    try {
-      published = await apiFetch<{ id: string }>(cfg, 'POST', `/${userPath}/threads_publish`, {
-        creation_id: created.id,
-      })
-      if (published?.id) break
-    } catch (e) {
-      if (i === 4) throw e
-      await delay(2000 + i * 1000)
-    }
+  try {
+    published = await apiFetch<{ id: string }>(cfg, 'POST', `/${userPath}/threads_publish`, {
+      creation_id: created.id,
+    })
+  } catch (err) {
+    console.error('Single publish attempt failed:', err)
+    throw err
   }
 
   const mediaId = published?.id || created.id
@@ -89,6 +87,14 @@ export async function publishPost(
   return { id: mediaId, permalink }
 }
 
+export async function replyToThread(
+  cfg: ThreadsConfig,
+  replyToId: string,
+  text: string
+): Promise<{ id: string; permalink?: string }> {
+  return publishReply(cfg, text, replyToId)
+}
+
 export async function publishReply(
   cfg: ThreadsConfig,
   text: string,
@@ -100,22 +106,17 @@ export async function publishReply(
   const created = await apiFetch<{ id: string }>(cfg, 'POST', `/${userPath}/threads`, createParams)
   if (!created.id) throw new Error('Threads API: Reply creation returned no ID')
 
-  await delay(2500)
+  await delay(3000)
 
-  let published: { id: string } | null = null
-  for (let i = 0; i < 5; i++) {
-    try {
-      published = await apiFetch<{ id: string }>(cfg, 'POST', `/${userPath}/threads_publish`, {
-        creation_id: created.id,
-      })
-      if (published?.id) break
-    } catch (e) {
-      if (i === 4) throw e
-      await delay(2000 + i * 1000)
-    }
-  }
+  const published = await apiFetch<{ id: string }>(cfg, 'POST', `/${userPath}/threads_publish`, {
+    creation_id: created.id,
+  })
 
   return { id: published?.id || created.id }
+}
+
+export async function getUnansweredReplies(cfg: ThreadsConfig): Promise<UnansweredReply[]> {
+  return fetchUnansweredReplies(cfg)
 }
 
 export async function fetchUnansweredReplies(cfg: ThreadsConfig): Promise<UnansweredReply[]> {
@@ -126,15 +127,14 @@ export async function fetchUnansweredReplies(cfg: ThreadsConfig): Promise<Unansw
         text?: string
         username?: string
         timestamp?: string
-        root_post?: { id: string; text?: string }
       }>
-    }>(cfg, 'GET', '/me/threads', { fields: 'id,text,username,timestamp,replies{id,text,username,timestamp}' })
+    }>(cfg, 'GET', '/me/threads', { fields: 'id,text,username,timestamp' })
 
     const list: UnansweredReply[] = []
     if (res.data) {
       for (const item of res.data) {
         if (item.text && item.id) {
-          // simplified sample fetch
+          // sample placeholder
         }
       }
     }
