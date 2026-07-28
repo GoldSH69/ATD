@@ -1,4 +1,5 @@
-  "enabled": true,
+{
+  "enabled": false,
   "scheduleMode": "times",
   "postingTimes": [
     "06:00",
@@ -10,8 +11,6 @@
   "intervalMinutes": 120,
   "replyIntervalMinutes": 30,
   "maxPostsPerDay": 5,
-
-
   "maxRepliesPerDay": 20,
   "maxPostsPerRun": 1,
   "maxRepliesPerRun": 3,
@@ -20,14 +19,14 @@
     "AI",
     "기술",
     "스타트업",
-    "생산성",
-    "자기계발"
+    "관계심리학",
+    "생산성"
   ],
   "categories": [
     "ai",
     "technology",
     "startups",
-    "productivity"
+    "relationships"
   ],
   "postLanguage": "ko",
   "toneNotes": "친근하고 위트 있는 유저 어조, 짧고 간결한 문장, 질문으로 끝맺음",

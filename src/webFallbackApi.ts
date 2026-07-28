@@ -12,7 +12,7 @@ const defaultSettings: AppSettings = {
   theme: 'dark',
   language: 'ko',
   onboarded: true,
-  topics: ['AI', '기술', '스타트업', '생산성'],
+  topics: ['AI', '기술', '스타트업', '관계심리학', '생산성'],
   newsSources: { google: true, yahoo: false, hackerNews: true, naver: true, custom: [] },
   llm: {
     provider: 'gemini',
@@ -37,13 +37,15 @@ const defaultSettings: AppSettings = {
   autopilot: {
     enabled: false,
     goLive: true,
+    scheduleMode: 'times',
+    postingTimes: ['06:00', '11:30', '15:00', '18:00', '21:00'],
     intervalMinutes: 120,
     replyIntervalMinutes: 30,
     goal: 'Threads 팔로워 및 참여도 극대화',
-    categories: ['ai', 'technology', 'startups'],
+    categories: ['ai', 'technology', 'startups', 'relationships'],
     postLanguage: 'ko',
     toneNotes: '친근하고 위트 있는 유저 어조',
-    maxPostsPerDay: 6,
+    maxPostsPerDay: 5,
     maxPostsPerRun: 1,
     originalRatio: 0.3,
     agentName: 'AutoThreads Bot',
@@ -92,7 +94,7 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
   try {
     const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`)
     if (res.ok) {
-      const data = (await res.json()) as { items?: Array<{ title?: string; link?: string; author?: string; pubDate?: string }> }
+      const data = (await res.json()) as { items?: Array<{ title?: string; link?: string; author?: string; pubDate?: string; description?: string }> }
       if (data && Array.isArray(data.items) && data.items.length > 0) {
         return data.items.map((it) => ({
           title: cleanTitle(it.title || ''),
@@ -100,6 +102,7 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
           source: it.author || 'Google News',
           publishedAt: it.pubDate ? Date.parse(it.pubDate) : Date.now(),
           topic: q,
+          snippet: it.description ? cleanTitle(it.description).replace(/<[^>]+>/g, '').slice(0, 150) : undefined,
         }))
       }
     }
@@ -123,12 +126,14 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
         const source = tagText(block, 'source') || 'Google News'
         const pubDate = tagText(block, 'pubDate')
         const parsed = pubDate ? Date.parse(pubDate) : NaN
+        const snippet = tagText(block, 'description').replace(/<[^>]+>/g, '').slice(0, 150)
         items.push({
           title,
           link: tagText(block, 'link'),
           source,
           publishedAt: Number.isFinite(parsed) ? parsed : Date.now(),
           topic: q,
+          snippet: snippet || undefined,
         })
       }
       if (items.length > 0) return items
@@ -140,14 +145,14 @@ async function fetchGoogleNewsWeb(topic: string): Promise<NewsItem[]> {
   const lowerTopic = q.toLowerCase()
   if (lowerTopic.includes('humor') || lowerTopic.includes('유머') || lowerTopic.includes('드립') || lowerTopic.includes('meme')) {
     return [
-      { title: `오늘 커뮤니티 반응 폭발한 소소하고 웃긴 유머 모음 🤣`, link: 'https://news.google.com', source: '인터넷유머', publishedAt: Date.now(), topic: q },
-      { title: `퇴근길 피로 날려버리는 소소한 인스타/스레드 인기 드립 릴레이`, link: 'https://news.google.com', source: '트렌드이슈', publishedAt: Date.now() - 3600000, topic: q },
+      { title: `오늘 커뮤니티 반응 폭발한 소소하고 웃긴 유머 모음 🤣`, link: 'https://news.google.com', source: '인터넷유머', publishedAt: Date.now(), topic: q, snippet: '퇴근길 피로를 날려주는 소소하지만 유쾌한 최근 드립과 대화 짤 모음이 큰 호응을 얻고 있습니다.' },
+      { title: `소소한 웃음 보장! 인스타/스레드 인기 드립 릴레이`, link: 'https://news.google.com', source: '트렌드이슈', publishedAt: Date.now() - 3600000, topic: q, snippet: '일상 속 웃긴 상황을 유머러스하게 담아낸 대화와 짤이 커뮤니티 유저들 사이에서 입소문을 타고 있습니다.' },
     ]
   }
 
   return [
-    { title: `IT 및 기술 분야 최근 주요 이슈 한눈에 보기 🚀`, link: 'https://news.google.com', source: '테크뉴스', publishedAt: Date.now(), topic: q },
-    { title: `글로벌 스타트업 생태계와 주목받는 신규 비즈니스 동향`, link: 'https://news.google.com', source: '글로벌이슈', publishedAt: Date.now() - 3600000, topic: q },
+    { title: `오픈AI & 구글 차세대 온디바이스 AI 기술 경쟁 가속화`, link: 'https://news.google.com', source: '테크뉴스', publishedAt: Date.now(), topic: q, snippet: '스마트폰과 PC에서 서버 연결 없이 작동하는 고성능 초경량 AI 모델이 잇따라 공개되며 유저들의 관심이 쏠리고 있습니다.' },
+    { title: `2026 글로벌 스타트업 생태계와 주목받는 신규 비즈니스 동향`, link: 'https://news.google.com', source: '글로벌이슈', publishedAt: Date.now() - 3600000, topic: q, snippet: '새로운 기술과 사용자 경험을 무기로 빠르게 시장 영역을 넓혀가는 혁신 스타트업들의 대규모 투자 소식이 연이어 발표되었습니다.' },
   ]
 }
 
@@ -155,6 +160,14 @@ function buildNaturalHumanPost(newsTitle: string, topic?: string, snippet?: stri
   const title = cleanTitle(newsTitle)
   const cleanSnippet = snippet ? cleanTitle(snippet).replace(/<[^>]+>/g, '').slice(0, 130) : ''
   const lowerTopic = (topic || '').toLowerCase()
+
+  if (lowerTopic.includes('심리') || lowerTopic.includes('관계') || lowerTopic.includes('psychology') || lowerTopic.includes('인간관계')) {
+    const originalPosts = [
+      `💡 상대방과의 대화에서 호감을 3배 높이는 '스몰톡' 심리학 법칙\n\n사람은 자기가 대화를 주도할 때 뇌에서 가장 많은 도파민이 분비됩니다. 대화할 때 내 이야기보다 상대방의 경험이나 취향을 묻는 질문 비율을 70%로 올려보세요!\n\n거부감 없이 순식간에 깊은 친밀감이 형성됩니다 🌿\n\n오늘 누군가와 대화할 때 어떤 질문으로 말을 건네보고 싶으신가요? 💬`,
+      `🌿 감정 소비를 줄이고 마음의 평정을 유지하는 '심리적 거리두기'\n\n타인의 부정적인 말이나 반응에 즉각 반응하지 않고 3초간 숨을 고르는 것만으로도 뇌의 편도체 흥분이 가라앉습니다. 내 마음의 주도권을 남에게 넘겨주지 않는 가장 쉬운 방법이죠.\n\n평소 타인의 말에 상처받을 때 자신만의 마음 조율법이 있으신가요? 💡`,
+    ]
+    return originalPosts[Math.floor(Math.random() * originalPosts.length)]
+  }
 
   if (lowerTopic.includes('humor') || lowerTopic.includes('유머') || lowerTopic.includes('드립') || lowerTopic.includes('meme')) {
     const summary = cleanSnippet || '오늘 커뮤니티와 SNS에서 유난히 높은 조회수와 폭발적인 댓글 반응을 얻고 있는 재미있는 유머 소식입니다.'
@@ -188,8 +201,6 @@ function buildNaturalHumanPost(newsTitle: string, topic?: string, snippet?: stri
   return `📢 ${title}\n\n${summary}\n\n사용자 편의성과 효율성을 획기적으로 올려줄 만한 변화라 앞으로의 확장성이 기대되네요!\n\n${ending}`
 }
 
-
-
 export function initWebFallbackApi() {
   if (typeof (window as unknown as { api?: unknown }).api !== 'undefined') {
     return
@@ -197,6 +208,20 @@ export function initWebFallbackApi() {
 
   let currentSettings: AppSettings = defaultSettings
   let currentDrafts: Draft[] = []
+
+  // Check localStorage FIRST so user choices take 100% priority
+  try {
+    const savedSettings = localStorage.getItem('autothreads_settings')
+    if (savedSettings) {
+      currentSettings = { ...defaultSettings, ...JSON.parse(savedSettings) }
+    } else {
+      currentSettings.autopilot.enabled = false
+    }
+    const savedDrafts = localStorage.getItem('autothreads_drafts')
+    if (savedDrafts) currentDrafts = JSON.parse(savedDrafts)
+  } catch {
+    // Ignore
+  }
 
   fetch('./data/config.json')
     .then((r) => r.json())
@@ -215,17 +240,6 @@ export function initWebFallbackApi() {
       }
     })
     .catch(() => {})
-
-  try {
-    const savedSettings = localStorage.getItem('autothreads_settings')
-    if (savedSettings) {
-      currentSettings = { ...defaultSettings, ...JSON.parse(savedSettings) }
-    }
-    const savedDrafts = localStorage.getItem('autothreads_drafts')
-    if (savedDrafts) currentDrafts = JSON.parse(savedDrafts)
-  } catch {
-    // Ignore
-  }
 
   const persistSettings = (s: AppSettings) => {
     currentSettings = s
@@ -313,20 +327,34 @@ export function initWebFallbackApi() {
   }
 
   const runSinglePass = async (): Promise<AutopilotStatus> => {
-    const topic = currentSettings.topics[Math.floor(Math.random() * currentSettings.topics.length)] || 'AI'
-    const news = await fetchGoogleNewsWeb(topic)
-    const selected = news[Math.floor(Math.random() * news.length)]
-    const title = selected ? selected.title : '최신 IT 및 기술 트렌드 소식'
+    const topics = currentSettings.topics.length > 0 ? currentSettings.topics : ['관계심리학', 'AI', '기술']
+    const shuffledTopics = [...topics].sort(() => 0.5 - Math.random())
 
-    const postText = buildNaturalHumanPost(title, topic)
+    let selectedNews: NewsItem | null = null
+    let selectedTopic = ''
+
+    for (const t of shuffledTopics) {
+      const news = await fetchGoogleNewsWeb(t)
+      if (news && news.length > 0) {
+        selectedNews = news[Math.floor(Math.random() * news.length)]
+        selectedTopic = t
+        break
+      }
+    }
+
+    if (!selectedTopic) selectedTopic = shuffledTopics[0] || '관계심리학'
+    const title = selectedNews ? selectedNews.title : `'${selectedTopic}' 인사이트 리포트`
+    const snippet = selectedNews ? selectedNews.snippet : undefined
+
+    const postText = buildNaturalHumanPost(title, selectedTopic, snippet)
 
     const newDraft: Draft = {
       id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       kind: 'post',
       text: postText,
-      topic: topic,
+      topic: selectedTopic,
       sourceTitle: title,
-      sourceUrl: selected?.link || 'https://news.google.com',
+      sourceUrl: selectedNews?.link || 'https://news.google.com',
       status: 'draft',
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -344,7 +372,6 @@ export function initWebFallbackApi() {
       kind: 'info',
       message: `📝 초안 생성 완료: "${postText.slice(0, 45)}..." (초안 탭에서 확인/게시 가능)`,
     }
-
 
     let localLogs: LogEntry[] = []
     try {

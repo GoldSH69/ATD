@@ -158,7 +158,9 @@ export interface NewsItem {
   source: string
   publishedAt: number | null
   topic: string
+  snippet?: string
 }
+
 
 export interface ImageCandidate {
   url: string
