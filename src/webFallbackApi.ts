@@ -195,14 +195,44 @@ export function initWebFallbackApi() {
   }
 
   const getDynamicStatus = async (): Promise<AutopilotStatus> => {
-    let logs: LogEntry[] = []
+    let serverLogs: LogEntry[] = []
     try {
       const res = await fetch('./data/logs.json?t=' + Date.now())
       if (res.ok) {
-        logs = await res.json()
+        serverLogs = await res.json()
       }
     } catch {
-      logs = []
+      serverLogs = []
+    }
+
+    let localLogs: LogEntry[] = []
+    try {
+      const rawLocal = localStorage.getItem('autothreads_web_logs')
+      if (rawLocal) localLogs = JSON.parse(rawLocal)
+    } catch {
+      localLogs = []
+    }
+
+    // Merge server logs and local browser logs, deduplicating by ID/message
+    const seen = new Set<string>()
+    const mergedLogs: LogEntry[] = []
+
+    for (const item of [...localLogs, ...serverLogs]) {
+      const key = item.id || `${item.at}-${item.message}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        mergedLogs.push(item)
+      }
+    }
+
+    // Sort descending by timestamp
+    mergedLogs.sort((a, b) => b.at - a.at)
+    const logs = mergedLogs.slice(0, 150)
+
+    try {
+      localStorage.setItem('autothreads_web_logs', JSON.stringify(logs))
+    } catch {
+      // Ignore
     }
 
     const ONE_DAY_MS = 24 * 60 * 60 * 1000
@@ -270,9 +300,22 @@ export function initWebFallbackApi() {
       message: `🚀 초안 생성 완료: "${postText.slice(0, 45)}..." (초안 탭에서 확인/게시 가능)`,
     }
 
+    // Save to local logs immediately
+    let localLogs: LogEntry[] = []
+    try {
+      const rawLocal = localStorage.getItem('autothreads_web_logs')
+      if (rawLocal) localLogs = JSON.parse(rawLocal)
+    } catch {
+      localLogs = []
+    }
+    localLogs.unshift(newLog)
+    try {
+      localStorage.setItem('autothreads_web_logs', JSON.stringify(localLogs))
+    } catch {
+      // Ignore
+    }
+
     const st = await getDynamicStatus()
-    st.log.unshift(newLog)
-    st.postsToday += 1
     return { ...st, busy: false, running: true }
   }
 
