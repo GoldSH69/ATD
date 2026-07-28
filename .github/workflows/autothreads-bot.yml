@@ -2,8 +2,13 @@ name: 24/7 AutoThreads Bot
 
 on:
   schedule:
-    - cron: '0 17 * * *'   # 매일 새벽 02:00 KST 1회 일괄 포스트 창작 가동 (17:00 UTC)
+    - cron: '0 17 * * *'   # 02:00 KST: 하루 5개 포스트 일괄 창작 + Post #1 즉시 실시간 발행 (17:00 UTC)
+    - cron: '30 23 * * *'  # 08:30 KST 출발 (3시간 딜레이 -> 목표 11:30 KST Post #2 발행)
+    - cron: '0 3 * * *'    # 12:00 KST 출발 (3시간 딜레이 -> 목표 15:00 KST Post #3 발행)
+    - cron: '0 6 * * *'    # 15:00 KST 출발 (3시간 딜레이 -> 목표 18:00 KST Post #4 발행)
+    - cron: '0 9 * * *'    # 18:00 KST 출발 (3시간 딜레이 -> 목표 21:00 KST Post #5 발행)
   workflow_dispatch:
+
 
 
  # Allows manual trigger from GitHub UI
